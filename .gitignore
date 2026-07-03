@@ -28,3 +28,6 @@ Thumbs.db
 *.swo
 .vscode/
 synth/sky130/
+
+# Whole synth folder
+synth/

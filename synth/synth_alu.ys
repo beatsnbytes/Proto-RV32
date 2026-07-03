@@ -1,6 +1,0 @@
-read_verilog -sv ../rtl/riscv_alu.sv
-synth -top riscv_alu
-dfflibmap -liberty sky130/sky130_fd_sc_hs__tt_025C_1v80.lib
-abc -liberty sky130/sky130_fd_sc_hs__tt_025C_1v80.lib
-write_verilog -noattr alu_netlist.v
-stat -liberty sky130/sky130_fd_sc_hs__tt_025C_1v80.lib
