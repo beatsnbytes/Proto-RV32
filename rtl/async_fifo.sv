@@ -62,7 +62,7 @@ module async_fifo #(
 
     // Assign the empty and full flags using the respective pointers
     assign empty = (rd_ptr_gray == wr_ptr_gray_sync2) ? 1'b1 : 1'b0;
-    assign full = (wr_ptr_gray == {~rd_ptr_gray_sync2[PTR_WIDTH], rd_ptr_gray_sync2[PTR_WIDTH-1:0]}); 
+    assign full = (wr_ptr_gray == {~rd_ptr_gray_sync2[PTR_WIDTH:PTR_WIDTH-1], rd_ptr_gray_sync2[PTR_WIDTH-2:0]});
 
     // Gray pointer (write) synchronizer
     always_ff @(posedge clk_wr) begin
