@@ -18,14 +18,15 @@ module cache_assertions (
     input logic         mem_resp_valid,
     input logic         mem_resp_ready,
     // internal state (visible because we bind inside the DUT scope)
-    input logic [1:0]   current_state
+    input logic [2:0]   current_state
 );
 
     // Local copies of the state encoding for readability
-    localparam logic [1:0] IDLE        = 2'b00;
-    localparam logic [1:0] M_SEND_REQ  = 2'b01;
-    localparam logic [1:0] M_WAIT_RESP = 2'b10;
-    localparam logic [1:0] CPU_RESPOND = 2'b11;
+    localparam logic [2:0] IDLE        = 3'b000;
+    localparam logic [2:0] M_SEND_REQ  = 3'b001;
+    localparam logic [2:0] M_WAIT_RESP = 3'b010;
+    localparam logic [2:0] WRITE       = 3'b011;
+    localparam logic [2:0] CPU_RESPOND = 3'b100;
 
 
     // 1. CPU response holds stable until accepted (ready/valid rule)
