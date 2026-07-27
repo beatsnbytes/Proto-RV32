@@ -18,13 +18,14 @@ module direct_mapped_cache_tb;
     logic mem_req_valid;
     logic mem_req_ready;
     logic [31 : 0] mem_addr;
-    logic [31 : 0] mem_wdata;
+    logic [127 : 0] mem_wdata;
     logic mem_resp_valid;
     logic mem_resp_ready;
     logic [127 : 0] mem_resp_data;
 
     logic [31:0] base;
 
+    localparam int ADDR_WIDTH = 32;
     localparam int MEM_LINES = 1024; // Addresses ranging from 0x0000_0000 to 0x0000_3FFF 1KB
     localparam int MEM_DEPTH = $clog2(MEM_LINES) + 4; // Adding the last 4 bits which are dedicated to offset
     localparam int MEM_WORDS = MEM_LINES * 4;
@@ -103,7 +104,8 @@ module direct_mapped_cache_tb;
             if (mem_req_ready && mem_req_valid) begin
                 if (mem_req_write) begin
                     mem_req_write_cnt = mem_req_write_cnt + 1;
-                    backing_mem[mem_addr[(MEM_DEPTH-1):4]][mem_addr[3:2]*32 +: 32] = mem_wdata; 
+                    // backing_mem[mem_addr[(MEM_DEPTH-1):4]][mem_addr[3:2]*32 +: 32] = mem_wdata;
+                    backing_mem[mem_addr[(MEM_DEPTH-1):4]] = mem_wdata; 
 
                 end else begin
                     mem_req_read_cnt = mem_req_read_cnt + 1;
@@ -174,10 +176,34 @@ module direct_mapped_cache_tb;
 
         #1;
         cpu_resp_ready = 1'b0;
-
-
-
     endtask
+
+    logic eviction_done_pulse = (dut.evict_line_r && (dut.current_state == dut.EVICT) && (mem_req_valid && mem_req_ready)); 
+    logic trigger_cond = (dut.current_state == dut.WRITE) && dut.write_done; 
+
+    // // Ordinary registers doing the "capture" job local vars would have done
+    // logic [ADDR_WIDTH-1:0]  cap_addr;
+    // logic [127:0]       cap_old_line;
+    // logic                watching;
+
+    // always_ff @(posedge clk) begin
+    //     if (rst) begin
+    //         watching <= 1'b0;
+    //     end else if (trigger_cond) begin          // your write-hit-dirties-line condition
+    //         cap_addr     <= dut.cpu_addr_r;
+    //         cap_old_line <= get_backing_line(cap_addr);
+    //         watching     <= 1'b1;
+    //     end else if (eviction_done_pulse && watching) begin
+    //         watching <= 1'b0;                        // stop watching once eviction resolves it
+    //     end
+    // end
+
+
+    // function automatic logic [127:0] get_backing_line(input logic [ADDR_WIDTH-1:0] addr);
+
+    // return backing_mem[addr[MEM_DEPTH-1:4]];
+
+    // endfunction
 
 
 
@@ -206,7 +232,7 @@ module direct_mapped_cache_tb;
             assert (cpu_resp_valid === 1'b1) else begin
                 $display("ERROR: cache dropped resp_valid before accept!"); errors++;
             end
-            assert (cpu_resp_data === (addr & ~32'd3)) else begin
+            assert (cpu_resp_data === (shadow_mem[addr[(SHADOW_MEM_DEPTH -1):2]])) else begin
                 $display("ERROR: cache changed resp_data before accept!"); errors++;
             end
         end
@@ -218,7 +244,7 @@ module direct_mapped_cache_tb;
             @(posedge clk);    
         end
         
-        assert(cpu_resp_data === (addr & ~32'd3))
+        assert(cpu_resp_data === (shadow_mem[addr[(SHADOW_MEM_DEPTH -1):2]]))
         else begin
             $display("ERROR: Expected %h, but got %h", (addr & ~32'd3), cpu_resp_data);
             errors = errors + 1;
@@ -346,74 +372,158 @@ module direct_mapped_cache_tb;
 
     // STORE TEST
 
-        // Scenario 1 — Write hit (write through)
-        $display("Scenario 1 — Write hit (write through)");
-        cpu_req(32'h0000_0A00);
+        // Write through version
+
+        // // Scenario 1 — Write hit (write through)
+        // $display("Scenario 1 — Write hit (write through)");
+        // cpu_req(32'h0000_0A00);
+        // repeat(5) @(posedge clk); #1;
+
+        // cpu_write(32'h0000_0A00, 32'hDEAD_BEEF);
+        // repeat(5) @(posedge clk); #1;
+
+        // cpu_req(32'h0000_0A00);
+        // repeat(5) @(posedge clk); #1;
+
+        // // Scenario 2 — Write miss (write-allocate)
+
+        // $display("Scenario 2 — Write miss (write-allocate)");
+        // mem_req_write_current = mem_req_write_cnt;
+        // mem_req_read_current = mem_req_read_cnt;
+        // cpu_write(32'h0000_0F00, 32'hCAFE_BABE);
+        // repeat(5) @(posedge clk); #1;
+        // assert((mem_req_write_cnt === (mem_req_write_current + 1)) && (mem_req_read_cnt === (mem_req_read_current + 1))) begin
+        //     assert(errors === 0) begin
+        //         $display("PASS");
+        //     end
+        // end 
+
+        // mem_req_read_current = mem_req_read_cnt;
+        // cpu_req(32'h0000_0F0C);
+        // repeat(5) @(posedge clk); #1;
+        // assert (mem_req_read_cnt === (mem_req_read_current)) begin
+        //     assert (errors === 0) begin 
+        //         $display("PASS");
+        //     end 
+        // end else begin
+        //     $display("ERROR: Sent memory request while data in cache!");
+        //     errors = errors + 1;    
+        // end
+
+        // // Scenario 3 — Write-through actually reaches memory
+        // $display("Scenario 3 — Write-through actually reaches memory");
+        // addr = 32'h0000_0C00;
+        // cpu_write(addr, 32'hCAFE_FFFF);
+        // repeat(5) @(posedge clk); #1;
+        // assert(backing_mem[addr[(MEM_DEPTH-1):4]][addr[3:2]*32 +: 32] == 32'hCAFE_FFFF) else begin
+        //     $display("ERROR: Write through didnt reach the main memory");
+        // end
+
+        // // Scenario 4 — Store then evict, then re-read (the coherence proof)
+        // $display("Scenario 4 — Store then evict, then re-read (the coherence proof)");
+        // cpu_write(32'h0000_0100, 32'hBABE_BABE);
+        // repeat(5) @(posedge clk); #1;
+
+        // mem_req_read_current = mem_req_read_cnt;
+        // cpu_req(32'h0000_0500); // Conflicting address, evicts the previous
+        // repeat(5) @(posedge clk); #1;
+        // assert (mem_req_read_cnt === (mem_req_read_current + 1)) else begin
+        //     $display("ERROR: Didnt miss again to fetch the evicted address!");
+        // end
+
+        // mem_req_read_current = mem_req_read_cnt;
+        // cpu_req(32'h0000_0100);
+        // repeat(5) @(posedge clk); #1;
+        // assert (mem_req_read_cnt === (mem_req_read_current + 1)) else begin
+        //     $display("ERROR: Didnt miss again to fetch the evicted address!");
+        // end
+
+    // WRITE-BACK SUPPORT TEST
+
+        // Write back version
+
+        // Scenario 1 — Write hit (write back)
+        $display("Scenario 1 — Write hit (write back)");
+        addr = 32'h0000_0300;
+        cpu_req(addr);
         repeat(5) @(posedge clk); #1;
 
-        cpu_write(32'h0000_0A00, 32'hDEAD_BEEF);
-        repeat(5) @(posedge clk); #1;
-
-        cpu_req(32'h0000_0A00);
-        repeat(5) @(posedge clk); #1;
-
-        // Scenario 2 — Write miss (write-allocate)
-
-        $display("Scenario 2 — Write miss (write-allocate)");
+        // mem_req_write should stay the same  - write back
         mem_req_write_current = mem_req_write_cnt;
-        mem_req_read_current = mem_req_read_cnt;
-        cpu_write(32'h0000_0F00, 32'hCAFE_BABE);
+        cpu_write(addr, 32'hDEAD_BEEF);
         repeat(5) @(posedge clk); #1;
-        assert((mem_req_write_cnt === (mem_req_write_current + 1)) && (mem_req_read_cnt === (mem_req_read_current + 1))) begin
-            assert(errors === 0) begin
-                $display("PASS");
-            end
-        end 
-
-        mem_req_read_current = mem_req_read_cnt;
-        cpu_req(32'h0000_0F0C);
-        repeat(5) @(posedge clk); #1;
-        assert (mem_req_read_cnt === (mem_req_read_current)) begin
-            assert (errors === 0) begin 
-                $display("PASS");
-            end 
-        end else begin
-            $display("ERROR: Sent memory request while data in cache!");
-            errors = errors + 1;    
+        assert (mem_req_write_cnt === mem_req_write_current) else begin
+            $display("ERROR: Write request to memory when no eviction triggered!");
+            errors = errors + 1; 
+        end
+        assert(backing_mem[addr[(MEM_DEPTH-1):4]]  !== {shadow_mem[{addr[(SHADOW_MEM_DEPTH -1):4], 2'b11}], shadow_mem[{addr[(SHADOW_MEM_DEPTH -1):4], 2'b10}], shadow_mem[{addr[(SHADOW_MEM_DEPTH -1):4], 2'b01}], 32'hDEAD_BEEF}) else begin
+            $display("ERROR: Main memory and cache same after write and no eviction");
+            errors = errors + 1; 
         end
 
-        // Scenario 3 — Write-through actually reaches memory
-        $display("Scenario 3 — Write-through actually reaches memory");
-        addr = 32'h0000_0C00;
-        cpu_write(addr, 32'hCAFE_FFFF);
-        repeat(5) @(posedge clk); #1;
-        assert(backing_mem[addr[(MEM_DEPTH-1):4]][addr[3:2]*32 +: 32] == 32'hCAFE_FFFF) else begin
-            $display("ERROR: Write through didnt reach the main memory");
-        end
 
-        // Scenario 4 — Store then evict, then re-read (the coherence proof)
-        $display("Scenario 4 — Store then evict, then re-read (the coherence proof)");
-        cpu_write(32'h0000_0100, 32'hBABE_BABE);
+        cpu_req(32'h0000_0300);
         repeat(5) @(posedge clk); #1;
 
+    // Scenario 2 - Write miss with eviction
+        $display("Scenario 2 - Write miss with eviction");
+        // Write miss first - mem_read_count should increase while mem_write_cnt should stay the same
         mem_req_read_current = mem_req_read_cnt;
-        cpu_req(32'h0000_0500); // Conflicting address, evicts the previous
+        mem_req_write_current = mem_req_write_cnt;
+        addr = 32'h0000_0A00;
+        cpu_write(addr, 32'hCAFE_CAFE);
         repeat(5) @(posedge clk); #1;
         assert (mem_req_read_cnt === (mem_req_read_current + 1)) else begin
-            $display("ERROR: Didnt miss again to fetch the evicted address!");
+            $display("ERROR: Write miss did not read from memory!");
+            errors = errors + 1; 
+        end
+        assert (mem_req_write_cnt === mem_req_write_current) else begin
+            $display("ERROR: Write miss issued write mem req when no eviction triggered!");
+            errors = errors + 1; 
         end
 
-        mem_req_read_current = mem_req_read_cnt;
-        cpu_req(32'h0000_0100);
+        // Write miss again on an aliased address  - eviction so write to mem should increase and backing mem should contain shadow data
+        mem_req_write_current = mem_req_write_cnt;
+        cpu_write(32'h0000_0E00, 32'hBABE_BABE);
         repeat(5) @(posedge clk); #1;
-        assert (mem_req_read_cnt === (mem_req_read_current + 1)) else begin
-            $display("ERROR: Didnt miss again to fetch the evicted address!");
+        assert (mem_req_write_cnt === (mem_req_write_current + 1)) else begin
+            $display("ERROR: Eviction did not trigger write to mem transaction!");
+            errors = errors + 1; 
+        end
+        assert(backing_mem[addr[(MEM_DEPTH-1):4]] == {shadow_mem[{addr[(SHADOW_MEM_DEPTH -1):4], 2'b11}], shadow_mem[{addr[(SHADOW_MEM_DEPTH -1):4], 2'b10}], shadow_mem[{addr[(SHADOW_MEM_DEPTH -1):4], 2'b01}], 32'hCAFE_CAFE}) else begin
+            $display("ERROR: Main memory and cache mismatch after line eviction");
+            errors = errors + 1; 
         end
 
 
-        
+        // Load hit on the newly fetched address
+        mem_req_read_current = mem_req_read_cnt;
+        cpu_req(32'h0000_0E00);
+        repeat(5) @(posedge clk); #1;
+        assert (mem_req_read_cnt === mem_req_read_current) else begin
+            $display("ERROR: Load hit triggered read from mem transaction!");
+            errors = errors + 1; 
+        end
 
 
+        // Scenario 3 - Load miss with eviction
+        $display("Scenario 3 - Load miss with eviction");
+        // Load miss first
+        addr = 32'h0000_0100;
+        cpu_req(addr);
+        repeat(5) @(posedge clk); #1;
+
+        // Write hit to dirty the line
+        cpu_write(addr, 32'hDEAD_BEEF);
+        repeat(5) @(posedge clk); #1;
+
+        // Load miss on an aliased address
+        cpu_req(32'h0000_0900);
+        repeat(5) @(posedge clk); #1;
+        assert(backing_mem[addr[(MEM_DEPTH-1):4]] == {shadow_mem[{addr[(SHADOW_MEM_DEPTH -1):4], 2'b11}], shadow_mem[{addr[(SHADOW_MEM_DEPTH -1):4], 2'b10}], shadow_mem[{addr[(SHADOW_MEM_DEPTH -1):4], 2'b01}], 32'hDEAD_BEEF}) else begin
+            $display("ERROR: Main memory and cache mismatch after line eviction");
+            errors = errors + 1; 
+        end
 
 
         if(errors == 0) $display("TESTNG COMPLETE. SUCCESS!");

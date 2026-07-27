@@ -23,11 +23,11 @@ module cache_assertions (
 
     // Local copies of the state encoding for readability
     localparam logic [2:0] IDLE        = 3'b000;
-    localparam logic [2:0] M_SEND_REQ  = 3'b001;
-    localparam logic [2:0] M_WAIT_RESP = 3'b010;
-    localparam logic [2:0] WRITE       = 3'b011;
-    localparam logic [2:0] CPU_RESPOND = 3'b100;
-
+    localparam logic [2:0] EVICT       = 3'b001;
+    localparam logic [2:0] M_SEND_REQ  = 3'b010;
+    localparam logic [2:0] M_WAIT_RESP = 3'b011;
+    localparam logic [2:0] WRITE       = 3'b100;
+    localparam logic [2:0] CPU_RESPOND = 3'b101;
 
     // 1. CPU response holds stable until accepted (ready/valid rule)
     ap_cpu_resp_hold: assert property (@(posedge clk) disable iff (rst)
@@ -51,9 +51,6 @@ module cache_assertions (
 
 endmodule
 
-
-
-
 // ---- Bind the checker into the DUT ----
 // This attaches cache_assertions to every instance of direct_mapped_cache,
 // wiring the checker's ports to the DUT's internal signals by name.
@@ -70,5 +67,5 @@ bind direct_mapped_cache cache_assertions u_cache_assertions (
     .mem_addr(mem_addr),
     .mem_resp_valid(mem_resp_valid),
     .mem_resp_ready(mem_resp_ready),
-    .current_state(current_state)
+    .current_state(dut.current_state)
 );
