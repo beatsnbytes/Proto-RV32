@@ -8,7 +8,7 @@ module direct_mapped_cache (
     input logic cpu_req_write, // Read = 0, Write = 1
     input logic cpu_req_valid, 
     output logic cpu_req_ready,
-    input logic [31 : 0] cpu_addr,
+    input logic [ADDR_WIDTH-1 : 0] cpu_addr,
     input logic [31 : 0] cpu_wdata,
     output logic [31 : 0] cpu_resp_data,
     output logic cpu_resp_valid,
@@ -17,8 +17,8 @@ module direct_mapped_cache (
     output logic mem_req_write, // Read = 0, Write = 1
     output logic mem_req_valid,
     input logic mem_req_ready,
-    output logic [31 : 0] mem_addr,
-    output logic [31 : 0] mem_wdata,
+    output logic [ADDR_WIDTH-1 : 0] mem_addr,
+    output logic [127 : 0] mem_wdata,
     input logic mem_resp_valid,
     output logic mem_resp_ready,
     input logic [127 : 0] mem_resp_data
@@ -43,18 +43,23 @@ module direct_mapped_cache (
 
     logic hit;
     logic is_write_r;
+    logic evict_line;
+    logic evict_line_r;
+    logic write_done;
     logic [31 : 0] cpu_wdata_r;
  
     logic [TAG_WIDTH-1 : 0] tag_mem [CACHE_ENTRIES - 1 : 0];
     logic [DATA_LINE_WIDTH-1 : 0] data_mem [CACHE_ENTRIES - 1 : 0];
     logic [CACHE_ENTRIES - 1 : 0] valid_bit_mem;
+    logic [CACHE_ENTRIES - 1 : 0] dirty_bit_mem; // Bit array showing the dirty lines
 
     typedef enum logic [2:0] {
         IDLE = 3'b000,
-        M_SEND_REQ = 3'b001,
-        M_WAIT_RESP = 3'b010,
-        WRITE = 3'b011,
-        CPU_RESPOND = 3'b100
+        EVICT = 3'b001,
+        M_SEND_REQ = 3'b010,
+        M_WAIT_RESP = 3'b011,
+        WRITE = 3'b100,
+        CPU_RESPOND = 3'b101
     } state_t;
 
     state_t current_state, next_state;
@@ -69,13 +74,16 @@ module direct_mapped_cache (
 
     assign hit = (tag == tag_mem[index]) && (valid_bit_mem[index]); // Hit is tag matches and the valid bit is asserted
 
+    assign evict_line = valid_bit_mem[index] && dirty_bit_mem[index]; 
+
     // Next state logic - combinational
     always_comb begin
         case (current_state)
-            IDLE : next_state = (cpu_req_valid) ? (hit ? (cpu_req_write ? WRITE : CPU_RESPOND) : M_SEND_REQ) : IDLE;
+            IDLE : next_state = (cpu_req_valid) ? (hit ? (cpu_req_write ? WRITE : CPU_RESPOND) : (evict_line ? EVICT : M_SEND_REQ)) : IDLE;
+            EVICT : next_state = (mem_req_ready) ? M_SEND_REQ : EVICT;
             M_SEND_REQ : next_state = mem_req_ready ? M_WAIT_RESP : M_SEND_REQ;
             M_WAIT_RESP : next_state = mem_resp_valid ? (is_write_r ? WRITE : CPU_RESPOND) : M_WAIT_RESP;
-            WRITE : next_state = mem_req_ready ? CPU_RESPOND : WRITE;
+            WRITE : next_state = write_done ? CPU_RESPOND : WRITE; 
             CPU_RESPOND: next_state = cpu_resp_ready ? IDLE : CPU_RESPOND; 
             default : next_state = current_state;
         endcase
@@ -108,18 +116,18 @@ module direct_mapped_cache (
                 IDLE : begin
                     cpu_req_ready = 1'b1;
                 end
+                EVICT : begin
+                    mem_req_valid = 1'b1;
+                    mem_addr = {tag_mem[index_r], index_r, offset_r}; // Construct the address of the cache line to be evicted.
+                    mem_wdata = data_mem[index_r];
+                    mem_req_write = 1'b1;
+                end
                 M_SEND_REQ : begin
                     mem_req_valid = 1'b1;
                     mem_addr = {cpu_addr_r[31:4], 4'b0};
                 end
                 M_WAIT_RESP : begin
                     mem_resp_ready = 1'b1;
-                end
-                WRITE : begin
-                    mem_req_valid = 1'b1;
-                    mem_addr = cpu_addr_r;
-                    mem_wdata = cpu_wdata_r;
-                    mem_req_write = 1'b1;
                 end
                 CPU_RESPOND : begin
                     cpu_resp_valid = 1'b1;
@@ -138,10 +146,12 @@ module direct_mapped_cache (
             cpu_addr_r <= '0;
             is_write_r <= '0;
             cpu_wdata_r <= '0;
+            evict_line_r <= '0;
         end else if ((current_state == IDLE) && (cpu_req_ready && cpu_req_valid)) begin
             cpu_addr_r <= cpu_addr;
             is_write_r <= cpu_req_write;
             cpu_wdata_r <= cpu_wdata;
+            evict_line_r <= evict_line;
         end
     end
 
@@ -153,14 +163,22 @@ module direct_mapped_cache (
                 tag_mem[i] <= '0;
             end
             valid_bit_mem <= '0;   
+            dirty_bit_mem <= '0;
+            write_done <= '0;
         end else begin
+            if ((current_state == CPU_RESPOND) && is_write_r) begin // We have already signaled the write is done so we deassert the value
+                write_done <= 1'b0;
+            end
             if ((current_state == M_WAIT_RESP) && mem_resp_valid) begin
                 data_mem[index_r] <= mem_resp_data;
                 tag_mem[index_r] <= tag_r;
                 valid_bit_mem[index_r] <= 1'b1;
+                dirty_bit_mem[index_r] <= 1'b0; // Need to overwrite with 0 in case the previous line was dirty and there was the value 1 as remnant
             end
-            if (current_state == WRITE) begin
+            if ((current_state == WRITE) && (!write_done)) begin
                 data_mem[index_r][offset_r[3:2]*32 +: 32] <= cpu_wdata_r;
+                dirty_bit_mem[index_r] <= 1'b1; // In a write-back memory a write to cache means dirty bit is asserted for the whole line
+                write_done <= 1'b1; 
             end
         end
     end
