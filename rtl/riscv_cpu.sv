@@ -47,6 +47,8 @@ module riscv_cpu (
     logic ex_wb_mem_to_reg;
     logic [4:0] ex_wb_rd_addr;
     logic ex_wb_reg_wr_en;
+    logic ex_wb_mem_write; //
+    logic [31:0] ex_wb_rs2_data;
 
     logic branch_stall, mul_stall;
     logic mul_start, mul_busy;
@@ -77,7 +79,7 @@ module riscv_cpu (
     // Pipeline stall for mul result waiting 
     assign mul_stall = ((mul_start || mul_busy) && !mul_done); 
 
-    // Combinational logic for the source of the pc. Either from branch instr or simple pc+4
+    // Combinational logic for the source of the pc. Either from branch instr or simple pc+4 -- 0  goes to pc+4 -- 1 source is from branch
     assign pc_src = id_ex_branch && ((id_ex_func3 == 3'b000 && zero) || (id_ex_func3 == 3'b001 && !zero));
 
     always_ff @(posedge clk) begin
@@ -161,23 +163,31 @@ module riscv_cpu (
         end
     end
 
+    // TODO implement a 2-phase FSM here. MEM_ACCEPT, MEM_RESPOND to handle the stalling of the cpu and the correct handling of the cpu-side valid/ready flags.
+
+    // TODO we have to break the ex_wb into ex_mem that actually feed the memory and then mem_wb that get bubbles untill the memory responds with the value.
     // LOAD - combinational read from the dmem
-    assign mem_data = dmem[ex_wb_ex_result[9:2]];
+    assign mem_data = dmem[ex_wb_ex_result[9:2]]; // TODO if we stall here then the wb_data needs to wait for the result, so needs to get bubbles? but in the case of no memory instruction the ex_wb_ex result gest fed directly to wb
 
     // Writeback MUX
     assign wb_data = ex_wb_mem_to_reg ? mem_data : ex_wb_ex_result;
 
     // SW - synchronous write
     always_ff @(posedge clk) begin
-        if (id_ex_mem_write) begin
-            dmem[ex_result[9:2]] <= rs2_data;
+        if (ex_wb_mem_write) begin 
+        // if (id_ex_mem_write) begin 
+                                    // TODO we gate using the id_ex_mem signal and that forces us to use combinationally the ex_result from the ALU.
+                                    // try to gate using ex_wb signal and feed the write stage the registered ex_result. 
+                                    // also rs2_data comes straigh from the reg_file without being registeres. I wonder why I made this asymmetry here bewteen store and load
+            // dmem[ex_result[9:2]] <= rs2_data;
+            dmem[ex_wb_ex_result[9:2]] <= ex_wb_rs2_data;
         end    
     end
 
 
     // Compare the current source registers with the destination register that just wrote back
     // Also the destination register should not be x0 (which is always zero) ad the wr_en should be high
-    assign fwd_a = (ex_wb_reg_wr_en && (id_ex_rs1_addr == ex_wb_rd_addr) 
+    assign fwd_a = (ex_wb_reg_wr_en && (id_ex_rs1_addr == ex_wb_rd_addr) // TODO here we should add probably && !mem_to_reg
                     && (ex_wb_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
     assign fwd_b = (ex_wb_reg_wr_en && (id_ex_rs2_addr == ex_wb_rd_addr) 
                     && (ex_wb_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
@@ -191,7 +201,9 @@ module riscv_cpu (
             ex_wb_reg_wr_en <= 1'b0; 
             ex_wb_csr_wr_data <= 32'b0;
             ex_wb_csr_wr_en <= 1'b0;
-            ex_wb_csr_addr <= 2'b0;     
+            ex_wb_csr_addr <= 2'b0;  
+            ex_wb_mem_write <= '0; //   
+            ex_wb_rs2_data <= '0;
         end else begin
             ex_wb_ex_result <= ex_result;
             ex_wb_mem_to_reg <= id_ex_mem_to_reg;
@@ -200,6 +212,8 @@ module riscv_cpu (
             ex_wb_csr_wr_data <= csr_wr_data;
             ex_wb_csr_wr_en <= id_ex_csr_wr_en;
             ex_wb_csr_addr <= id_ex_csr_addr;
+            ex_wb_mem_write <= id_ex_mem_write; //
+            ex_wb_rs2_data <= rs2_data;
         end
 
 

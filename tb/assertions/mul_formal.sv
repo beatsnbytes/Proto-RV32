@@ -19,7 +19,7 @@ module mul_formal_props (
 
 always @(posedge clk) begin
     if (!rst)
-        assert(done != busy);
+        assert (!(done && busy));
 end
 
 endmodule
