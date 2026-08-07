@@ -41,14 +41,14 @@ module riscv_cpu (
     logic [2:0] ex_func3;
     logic [31:0] ex_pc;
 
-    logic fwd_a, fwd_b;
+    logic fwd_to_rs1, fwd_to_rs2;
 
-    logic [31:0] ex_mem_exec_result;
-    logic ex_mem_cache_to_reg;
-    logic [4:0] ex_mem_rd_addr;
-    logic ex_mem_reg_wr_en;
-    logic ex_mem_cache_write; 
-    logic [31:0] ex_mem_rs2_data;
+    logic [31:0] mem_exec_result;
+    logic mem_cache_to_reg;
+    logic [4:0] mem_rd_addr;
+    logic mem_reg_wr_en;
+    logic mem_cache_write; 
+    logic [31:0] mem_rs2_data;
 
     logic branch_stall, mul_stall;
     logic mul_start, mul_busy;
@@ -61,17 +61,17 @@ module riscv_cpu (
     logic [31:0] csr_wr_data;
     logic [31:0] csr_rd_data;
     logic [31:0] fwd_csr_rd_data;
-    logic [31:0] ex_mem_csr_wr_data;
+    logic [31:0] mem_csr_wr_data;
     logic csr_rd_en;
     logic ex_csr_rd_en;
     logic csr_rw;
     logic ex_csr_rw;
     logic csr_wr_en;
     logic ex_csr_wr_en;
-    logic ex_mem_csr_wr_en;
+    logic mem_csr_wr_en;
     logic [11:0] csr_addr;
     logic [1:0] ex_csr_addr;
-    logic [1:0] ex_mem_csr_addr;
+    logic [1:0] mem_csr_addr;
     logic fwd_csr;
     
 
@@ -165,53 +165,54 @@ module riscv_cpu (
 
     // TODO implement a 2-phase FSM here. MEM_ACCEPT, MEM_RESPOND to handle the stalling of the cpu and the correct handling of the cpu-side valid/ready flags.
 
-    // TODO we have to break the ex_wb into ex_mem that actually feed the memory and then mem_wb that get bubbles untill the memory responds with the value.
+    // TODO we have to break the ex_wb into mem that actually feed the memory and then mem_wb that get bubbles untill the memory responds with the value.
     // LOAD - combinational read from the dmem
-    assign cache_data = dmem[ex_mem_exec_result[9:2]]; // TODO if we stall here then the wb_data needs to wait for the result, so needs to get bubbles? but in the case of no memory instruction the ex_wb_ex result gest fed directly to wb
+    assign cache_data = dmem[mem_exec_result[9:2]]; // TODO if we stall here then the wb_data needs to wait for the result, so needs to get bubbles? but in the case of no memory instruction the ex_wb_ex result gest fed directly to wb
 
     // Writeback MUX
-    assign wb_data = ex_mem_cache_to_reg ? cache_data : ex_mem_exec_result;
+    assign wb_data = mem_cache_to_reg ? cache_data : mem_exec_result;
 
     // SW - synchronous write
     always_ff @(posedge clk) begin
-        if (ex_mem_cache_write) begin 
-                                    // TODO we gate using the ex_mem signal and that forces us to use combinationally the exec_result from the ALU.
+        if (mem_cache_write) begin 
+                                    // TODO we gate using the mem signal and that forces us to use combinationally the exec_result from the ALU.
                                     // try to gate using ex_wb signal and feed the write stage the registered exec_result. 
                                     // also rs2_data comes straigh from the reg_file without being registeres. I wonder why I made this asymmetry here bewteen store and load
-            dmem[ex_mem_exec_result[9:2]] <= ex_mem_rs2_data;
+            dmem[mem_exec_result[9:2]] <= mem_rs2_data;
         end    
     end
 
 
     // Compare the current source registers with the destination register that just wrote back
     // Also the destination register should not be x0 (which is always zero) ad the wr_en should be high
-    assign fwd_a = (ex_mem_reg_wr_en && (ex_rs1_addr == ex_mem_rd_addr) // TODO here we should add probably && !cache_to_reg
-                    && (ex_mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
-    assign fwd_b = (ex_mem_reg_wr_en && (ex_rs2_addr == ex_mem_rd_addr) 
-                    && (ex_mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
+    // Deciding on the execute stage result forwarding from mem back to ex. The cache result cannot be forwarded since it will only be ready in wb stage.
+    assign fwd_to_rs1 = ( (mem_reg_wr_en && !cache_to_reg) && (ex_rs1_addr == mem_rd_addr) 
+                    && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
+    assign fwd_to_rs2 = ( (mem_reg_wr_en && !cache_to_reg) && (ex_rs2_addr == mem_rd_addr) 
+                    && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
 
     // EX/WB pipeline register
     always_ff @(posedge clk) begin
         if (rst) begin
-            ex_mem_exec_result <= 32'b0;
-            ex_mem_cache_to_reg <= 1'b0;  
-            ex_mem_rd_addr <= 5'b0;
-            ex_mem_reg_wr_en <= 1'b0; 
-            ex_mem_csr_wr_data <= 32'b0;
-            ex_mem_csr_wr_en <= 1'b0;
-            ex_mem_csr_addr <= 2'b0;  
-            ex_mem_cache_write <= '0; 
-            ex_mem_rs2_data <= '0;
+            mem_exec_result <= 32'b0;
+            mem_cache_to_reg <= 1'b0;  
+            mem_rd_addr <= 5'b0;
+            mem_reg_wr_en <= 1'b0; 
+            mem_csr_wr_data <= 32'b0;
+            mem_csr_wr_en <= 1'b0;
+            mem_csr_addr <= 2'b0;  
+            mem_cache_write <= '0; 
+            mem_rs2_data <= '0;
         end else begin
-            ex_mem_exec_result <= exec_result;
-            ex_mem_cache_to_reg <= ex_cache_to_reg;
-            ex_mem_rd_addr <= ex_rd_addr;
-            ex_mem_reg_wr_en <= ex_reg_wr_en;
-            ex_mem_csr_wr_data <= csr_wr_data;
-            ex_mem_csr_wr_en <= ex_csr_wr_en;
-            ex_mem_csr_addr <= ex_csr_addr;
-            ex_mem_cache_write <= ex_cache_write; 
-            ex_mem_rs2_data <= rs2_data;
+            mem_exec_result <= exec_result;
+            mem_cache_to_reg <= ex_cache_to_reg;
+            mem_rd_addr <= ex_rd_addr;
+            mem_reg_wr_en <= ex_reg_wr_en;
+            mem_csr_wr_data <= csr_wr_data;
+            mem_csr_wr_en <= ex_csr_wr_en;
+            mem_csr_addr <= ex_csr_addr;
+            mem_cache_write <= ex_cache_write; 
+            mem_rs2_data <= rs2_data;
         end
 
 
@@ -246,14 +247,14 @@ module riscv_cpu (
     // If the instruction in EX stage is writing to CSR and the current instruction is reading from the same CSR, 
     // then we need to forward the data from EX/WB pipeline register instead of reading from the CSR regfile 
     // (which will have the old value until the write happens at the end of WB stage)
-    assign fwd_csr = ex_mem_csr_wr_en && (ex_csr_addr == ex_mem_csr_addr);
-    assign fwd_csr_rd_data = fwd_csr ? ex_mem_csr_wr_data : csr_rd_data;
+    assign fwd_csr = mem_csr_wr_en && (ex_csr_addr == mem_csr_addr);
+    assign fwd_csr_rd_data = fwd_csr ? mem_csr_wr_data : csr_rd_data;
 
     riscv_csr riscv_csr_inst (
         .clk(clk),
-        .csr_wr_en(ex_mem_csr_wr_en),
-        .csr_wr_addr(ex_mem_csr_addr), 
-        .csr_wr_data(ex_mem_csr_wr_data),
+        .csr_wr_en(mem_csr_wr_en),
+        .csr_wr_addr(mem_csr_addr), 
+        .csr_wr_data(mem_csr_wr_data),
         .csr_rd_addr(ex_csr_addr),
         .hw_wr_en(1'b0),
         .hw_wr_addr(2'b0),
@@ -272,10 +273,10 @@ module riscv_cpu (
         .exec_op(ex_exec_op),
         .imm(ex_imm),
         .wb_data(wb_data),
-        .fwd_a(fwd_a),
-        .fwd_b(fwd_b),
-        .wb_rd_addr(ex_mem_rd_addr),
-        .wb_reg_wr_en(ex_mem_reg_wr_en),
+        .fwd_to_rs1(fwd_to_rs1),
+        .fwd_to_rs2(fwd_to_rs2),
+        .wb_rd_addr(mem_rd_addr),
+        .wb_reg_wr_en(mem_reg_wr_en),
         .mul_start(real_start),
         .exec_result(exec_result),
         .zero(zero),

@@ -14,8 +14,8 @@ module riscv_execute (
     input logic [3:0] exec_op,
     input logic [31:0] imm,
     input logic [31:0] wb_data,
-    input logic fwd_a, 
-    input logic fwd_b,
+    input logic fwd_to_rs1, 
+    input logic fwd_to_rs2,
     input logic [4:0] wb_rd_addr,
     input logic wb_reg_wr_en, 
     input logic mul_start,
@@ -37,8 +37,8 @@ module riscv_execute (
     logic [31:0] rs1_data;
     logic [31:0] rs2_imm;
 
-    logic [31:0] fwd_rs1_data;
-    logic [31:0] fwd_rs2_data;
+    logic [31:0] rs1_src_data;
+    logic [31:0] rs2_src_data;
     logic [31:0] mul_result;
     logic [31:0] alu_result;
     logic [31:0] mul_result_latched;
@@ -46,13 +46,13 @@ module riscv_execute (
 
 
     // MUX forwarding the wb data in rs1 in case of hazard
-    assign fwd_rs1_data = fwd_a ? wb_data : rs1_data;
+    assign rs1_src_data = fwd_to_rs1 ? wb_data : rs1_data;
 
     // MUX forwarding the wb data in rs2 in case of hazard
-    assign fwd_rs2_data = fwd_b ? wb_data : rs2_data;
+    assign rs2_src_data = fwd_to_rs2 ? wb_data : rs2_data;
 
-    // MUX selecting between the immediate and the fwd_rs2_data in case of I-TYPE
-    assign rs2_imm = alu_src ? imm : fwd_rs2_data ;
+    // MUX selecting between the immediate and the rs2_src_data in case of I-TYPE
+    assign rs2_imm = alu_src ? imm : rs2_src_data ;
 
     // MUX selecting between result from CSR file, multiplier or ALU
     assign exec_result = csr_rd_en ? csr_rd_data : (result_src ? mul_result_latched : alu_result);
@@ -71,7 +71,7 @@ module riscv_execute (
     end
 
     // The data to be written to the CSR address depending on if csrrw or csrrs
-    assign csr_wr_data = csr_rw ? fwd_rs1_data : (fwd_rs1_data | csr_rd_data);
+    assign csr_wr_data = csr_rw ? rs1_src_data : (rs1_src_data | csr_rd_data);
 
     riscv_regfile riscv_regfile_inst(
         .clk(clk),
@@ -87,7 +87,7 @@ module riscv_execute (
 
     riscv_alu riscv_alu_inst(
         .op(exec_op), // Opcode for the operation to be performed
-        .a(fwd_rs1_data), // First operand
+        .a(rs1_src_data), // First operand
         .b(rs2_imm), // Second operand
         .result(alu_result), 
         .zero(zero) // 1-bit flag - High when result==0 - Used by branch insn
@@ -97,7 +97,7 @@ module riscv_execute (
         .clk(clk),
         .rst(rst),
         .start(mul_start),
-        .op_a(fwd_rs1_data),
+        .op_a(rs1_src_data),
         .op_b(rs2_imm),
         .op(exec_op),
         .result(mul_result),
