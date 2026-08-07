@@ -28,7 +28,7 @@ module riscv_cpu_formal_props (
             end
 
             if (riscv_cpu.fwd_csr == 1'b1) begin
-                assert (riscv_cpu.fwd_csr_rd_data == riscv_cpu.ex_wb_csr_wr_data);
+                assert (riscv_cpu.fwd_csr_rd_data == riscv_cpu.ex_mem_csr_wr_data);
             end else begin
                 assert (riscv_cpu.fwd_csr_rd_data == riscv_cpu.csr_rd_data);
             end

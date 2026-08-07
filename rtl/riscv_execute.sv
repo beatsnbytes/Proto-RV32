@@ -11,7 +11,7 @@ module riscv_execute (
     input logic [4:0] rd_addr,
     input logic reg_wr_en,
     input logic alu_src,
-    input logic [3:0] ex_op,
+    input logic [3:0] exec_op,
     input logic [31:0] imm,
     input logic [31:0] wb_data,
     input logic fwd_a, 
@@ -24,7 +24,7 @@ module riscv_execute (
     input logic csr_rd_en, 
     input logic csr_rw, 
     // ALU-related
-    output logic [31:0] ex_result,
+    output logic [31:0] exec_result,
     output logic zero,
     output logic [31:0] rs2_data,
     output logic mul_done,
@@ -55,7 +55,7 @@ module riscv_execute (
     assign rs2_imm = alu_src ? imm : fwd_rs2_data ;
 
     // MUX selecting between result from CSR file, multiplier or ALU
-    assign ex_result = csr_rd_en ? csr_rd_data : (result_src ? mul_result_latched : alu_result);
+    assign exec_result = csr_rd_en ? csr_rd_data : (result_src ? mul_result_latched : alu_result);
 
     // register to latch mul result
     always_ff @(posedge clk) begin
@@ -86,7 +86,7 @@ module riscv_execute (
     );
 
     riscv_alu riscv_alu_inst(
-        .op(ex_op), // Opcode for the operation to be performed
+        .op(exec_op), // Opcode for the operation to be performed
         .a(fwd_rs1_data), // First operand
         .b(rs2_imm), // Second operand
         .result(alu_result), 
@@ -99,7 +99,7 @@ module riscv_execute (
         .start(mul_start),
         .op_a(fwd_rs1_data),
         .op_b(rs2_imm),
-        .op(ex_op),
+        .op(exec_op),
         .result(mul_result),
         .done(mul_done),
         .busy(mul_busy)

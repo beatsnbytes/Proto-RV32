@@ -5,14 +5,14 @@
 module riscv_cpu_tb;
 
     logic clk, rst;
-    logic [31:0] pc, ex_result;
+    logic [31:0] pc, exec_result;
     logic zero;
 
     riscv_cpu dut (
     .clk(clk),
     .rst(rst),
     .pc(pc),
-    .ex_result(ex_result),
+    .exec_result(exec_result),
     .zero(zero)
     );
 
@@ -35,8 +35,8 @@ module riscv_cpu_tb;
     end
 
     initial begin
-        $monitor("time=%2t pc=%h | ex_result=%h | zero=%b",
-        $time, pc, ex_result, zero);
+        $monitor("time=%2t pc=%h | exec_result=%h | zero=%b",
+        $time, pc, exec_result, zero);
     end
 
 endmodule
