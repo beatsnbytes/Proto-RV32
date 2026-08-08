@@ -14,13 +14,13 @@ module riscv_fetch_decode (
     output logic [3:0] exec_op,
     output logic reg_wr_en,
     output logic [31:0] instr,
-    output logic alu_src, // 0 = use rs2, 1 use imm
+    output logic use_imm, // 0 = use rs2, 1 use imm
     output logic branch,
     output logic [2:0] func3,
     // Output signals from LW/SW instr
-    output logic cache_read, 
-    output logic cache_write,
-    output logic cache_to_reg, // 0 = ALU_RESULT, 1 = memory data
+    output logic memory_read, 
+    output logic memory_write,
+    output logic memory_to_reg, // 0 = ALU_RESULT, 1 = memory data
     output logic mul_start,
     // Output signals for the CSR file
     output logic csr_wr_en, 
@@ -55,12 +55,12 @@ module riscv_fetch_decode (
         exec_op = 4'b0000; // Default ADD
         reg_wr_en = 1'b0;
         imm = 32'b0;
-        alu_src = 1'b0; // Get value from rs2
+        use_imm = 1'b0; // Get value from rs2
         branch = 1'b0;
         // Default signals for data memory
-        cache_read = 1'b0;
-        cache_write = 1'b0;
-        cache_to_reg = 1'b0;
+        memory_read = 1'b0;
+        memory_write = 1'b0;
+        memory_to_reg = 1'b0;
         // Default signals for multiplier
         mul_start = 1'b0;
         // Default signals for CSR
@@ -73,7 +73,7 @@ module riscv_fetch_decode (
         case (opcode) 
             // 7'b0110011 — R-type  (ADD, SUB, AND, OR, XOR, SLL, SRL, SRA, SLT, SLTU)
             7'b0110011 : begin
-                alu_src = 1'b0;
+                use_imm = 1'b0;
                 reg_wr_en = 1'b1;
                 case (func3)
                     // ADD/SUB and MUL
@@ -117,7 +117,7 @@ module riscv_fetch_decode (
             end
             // 7'b0010011 — I-type  (ADDI, ANDI, ORI, XORI, SLLI, SRLI, SRAI, SLTI, SLTIU)
             7'b0010011: begin
-                alu_src = 1'b1;
+                use_imm = 1'b1;
                 reg_wr_en = 1'b1;
                 imm = {{20{instr[31]}}, instr[31:20]};
                 case(func3)
@@ -141,25 +141,25 @@ module riscv_fetch_decode (
             end
             // 7'b1100011 B-Type instructions BEQ, BNE
             7'b1100011 : begin
-                // alu_src = 1'b0;
+                // use_imm = 1'b0;
                 imm = { {20{instr[31]}}, instr[7], instr[30:25], instr[11:8], 1'b0};
                 branch = 1'b1;
                 exec_op = 4'b0001; // SUB  rs1 - rs2, check zero flag
             end
             // 7'b0000011 LW
             7'b0000011 : begin
-                cache_read = 1'b1;
+                memory_read = 1'b1;
                 reg_wr_en = 1'b1;
-                cache_to_reg = 1'b1;
+                memory_to_reg = memory_read && reg_wr_en;
                 imm = {{20{instr[31]}}, instr[31:20]}; 
-                alu_src = 1'b1;
+                use_imm = 1'b1;
                 // exec_op is 4'b0000 ADD as the default case
             end
             // 7'b0100011 SW
             7'b0100011 : begin
-                cache_write = 1'b1;
+                memory_write = 1'b1;
                 imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};
-                alu_src = 1'b1;
+                use_imm = 1'b1;
                 // exec_op is 4'b0000 ADD as the default case
             end
             // CSRRW, CSRRS 
