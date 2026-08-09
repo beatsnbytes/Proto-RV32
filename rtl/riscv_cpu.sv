@@ -2,12 +2,19 @@
 // The top level module that connects fetch&decode with execute
 // Week10 - Towards a simple RISC-V processor
 
+//TODO perform a general code refactoring. bundle logic together per stage pipeline registers and reorder module instationation, seq and comb blocks where needed
 module riscv_cpu (
     input logic clk,
     input logic rst,
-    output logic [31:0] pc,
-    output logic [31:0] exec_result,
-    output logic zero
+    //CPU-to-Cache connection
+    output logic cpu_req_write, // Read = 0, Write = 1
+    output logic cpu_req_valid, 
+    input logic cpu_req_ready,
+    output logic [31 : 0] cpu_addr,
+    output logic [31 : 0] cpu_wdata,
+    input logic [31 : 0] cpu_resp_data,
+    input logic cpu_resp_valid,
+    output logic cpu_resp_ready
 );
 
     logic [4:0] rs1_addr, rs2_addr, rd_addr;
@@ -40,6 +47,9 @@ module riscv_cpu (
     logic ex_branch;
     logic [2:0] ex_func3;
     logic [31:0] ex_pc;
+    logic [31:0] pc;
+    logic zero;
+    logic [31:0] exec_result;
 
     logic fwd_mem_rs1, fwd_mem_rs2;
     logic [1:0] fwd_to_rs1, fwd_to_rs2;
@@ -306,6 +316,11 @@ module riscv_cpu (
     assign fwd_mem_rs2 = ( (mem_reg_wr_en && !mem_memory_to_reg) && (ex_rs2_addr == mem_rd_addr) 
                     && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
 
+
+    //TODO remove the dummy and dmem logic and connect to the cache instead
+    //TODO generate cache signals (input/output) to drive the cache module and sample its outputs
+    //TODO maybe FSM?
+
     assign cache_operation_done = (dummy_counter == 3'd5); 
     assign mem_stall = ((mem_memory_read || mem_memory_write) && !cache_operation_done); 
     
@@ -335,7 +350,7 @@ module riscv_cpu (
             dmem[mem_exec_result[9:2]] <= mem_memory_wr_data;
         end    
     end
-
+    //TODO logic up to here to be removed and replaced with dcache
 
     // MEM/WB pipeline register
     always_ff @(posedge clk) begin

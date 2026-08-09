@@ -2,6 +2,7 @@
 // Test all the modules of the CPU connected together
 // Week10 - Testing th whole CPU
 
+//TODO change tb accoringly. drive simulation signals to the riscv_soc instead. how to deal with main memory model?
 module riscv_cpu_tb;
 
     logic clk, rst;
