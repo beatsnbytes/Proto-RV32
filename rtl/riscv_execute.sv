@@ -104,6 +104,7 @@ module riscv_execute (
     );
 
 
+    //TODO run the multiply testbech and simplify if it can be done.
     // register to latch mul result
     always_ff @(posedge clk) begin
         if (rst) begin

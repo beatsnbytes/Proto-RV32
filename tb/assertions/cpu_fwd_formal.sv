@@ -12,6 +12,7 @@ module riscv_cpu_formal_props (
     input logic clk,
     input logic rst
 );
+//TODO extend to cover the forwarding logic from both the MEM and WB stages.
 
     always @(posedge clk) begin
         if (!rst) begin

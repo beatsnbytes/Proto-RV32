@@ -29,7 +29,7 @@ module riscv_cpu_tb;
         rst = 1'b0;
 
         // Wait enough cycles to see the output of the alu
-        repeat(20) @(posedge clk); #1;
+        repeat(40) @(posedge clk); #1;
 
         $finish;
     end

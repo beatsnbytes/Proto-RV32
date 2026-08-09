@@ -57,7 +57,7 @@ module riscv_cpu (
 
     logic ex_mul_start;
     logic real_start;
-    logic load_bubble;
+    logic load_use_hzrd_bubble;
 
     // CSR related
     logic [31:0] csr_wr_data;
@@ -98,7 +98,7 @@ module riscv_cpu (
     logic [31:0] mem_pc, wb_pc;
     
 
-
+    //TODO something fishy about the mul signals, stalls, etc. Check them with a test and possibly debug.
     // Pipeline stall for mul result waiting 
     assign mul_stall = ((mul_start || mul_busy) && !mul_done); 
 
@@ -109,6 +109,7 @@ module riscv_cpu (
         branch_stall <= pc_src;
     end
 
+//TODO Dont know if thats entirely correct. if thats an overkill. seems that mul_strt would suffice?
     always_ff @(posedge clk) begin
         real_start <= (((exec_op == 4'hA) || (exec_op == 4'hB)) && !mul_busy && !mul_done) ? 1'b1 : 1'b0;
     end
@@ -120,8 +121,8 @@ module riscv_cpu (
             pc <= 32'd0;
         end else if (pc_src) begin
             pc <= ex_pc + ex_imm;
-        end else if (branch_stall || mul_stall || load_bubble) begin
-            pc <= pc;
+        end else if (branch_stall || mul_stall || load_use_hzrd_bubble || mem_stall) begin
+            // FREEZE - hold current value - no assignment needed
         end else begin
             pc <= pc + 32'd4;
         end
@@ -148,7 +149,9 @@ module riscv_cpu (
             ex_csr_wr_en <= 1'b0;
             ex_csr_rw <= 1'b0;
             ex_csr_addr <= 2'b0;
-        end else if (branch_stall || mul_busy || load_bubble) begin
+        end else if (mem_stall) begin
+            // FREEZE - hold current values - no assignment needed here 
+        end else if (branch_stall || mul_busy || load_use_hzrd_bubble) begin
             ex_rs1_addr <= 5'b0;
             ex_rs2_addr <= 5'b0;
             ex_rd_addr <= 5'b0;
@@ -187,8 +190,7 @@ module riscv_cpu (
     end
 
     // Theoretically it will persist only for 1cc since when the NOPped ex register will flood EX stage then ex_memory_read=0 and load_bubble=0
-    assign load_bubble = ex_memory_read && ((ex_rd_addr == rs1_addr) && (ex_rd_addr != 5'd0) || (ex_rd_addr == rs2_addr) && (ex_rd_addr != 5'd0)); // Insert an 1cc bubble if current instruction in execute is LOAD and the next instruction is dependent.
-    // assign load_bubble = 1'b0;
+    assign load_use_hzrd_bubble = ex_memory_read && ((ex_rd_addr == rs1_addr) && (ex_rd_addr != 5'd0) || (ex_rd_addr == rs2_addr) && (ex_rd_addr != 5'd0)); // Insert an 1cc bubble if current instruction in execute is LOAD and the next instruction is dependent.
 
     riscv_fetch_decode riscv_fetch_decode_inst(
         .clk(clk),
@@ -218,7 +220,7 @@ module riscv_cpu (
     // If the instruction in EX stage is writing to CSR and the current instruction is reading from the same CSR, 
     // then we need to forward the data from EX/MEM pipeline register instead of reading from the CSR regfile 
     // (which will have the old value until the write happens at the end of MEM stage)
-    assign fwd_csr = mem_csr_wr_en && (ex_csr_addr == mem_csr_addr); // TODO check fere for what the forwarding is and if it needs fixing
+    assign fwd_csr = mem_csr_wr_en && (ex_csr_addr == mem_csr_addr);
     assign fwd_csr_rd_data = fwd_csr ? mem_csr_wr_data : csr_rd_data;
 
     riscv_csr riscv_csr_inst (
@@ -248,8 +250,8 @@ module riscv_cpu (
         .wb_data(wb_data), // The data muxed in the WB stage (either the exec stage result or the memory load result)
         .fwd_to_rs1(fwd_to_rs1),
         .fwd_to_rs2(fwd_to_rs2),
-        .wb_rd_addr(wb_rd_addr), // TODO prev mem
-        .wb_reg_wr_en(wb_reg_wr_en), // prev mem
+        .wb_rd_addr(wb_rd_addr), 
+        .wb_reg_wr_en(wb_reg_wr_en), 
         .mul_start(real_start),
         .exec_result(exec_result),
         .zero(zero),
@@ -277,6 +279,8 @@ module riscv_cpu (
             mem_memory_write <= '0; 
             mem_memory_wr_data <= '0;
             mem_pc <= 32'b0;
+        end else if (mem_stall) begin
+            // FREEZE - hold current values - no assignment needed here
         end else begin
             mem_exec_result <= exec_result;
             mem_memory_to_reg <= ex_memory_to_reg;
@@ -302,8 +306,23 @@ module riscv_cpu (
     assign fwd_mem_rs2 = ( (mem_reg_wr_en && !mem_memory_to_reg) && (ex_rs2_addr == mem_rd_addr) 
                     && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
 
-    assign cache_operation_done = 1'b1; // TODO placholder value that will be connected to the cache respond valid/ready handhsake logic
-    assign mem_stall = (mem_memory_read || mem_memory_write) && !cache_operation_done; 
+    assign cache_operation_done = (dummy_counter == 3'd5); 
+    assign mem_stall = ((mem_memory_read || mem_memory_write) && !cache_operation_done); 
+    
+    // Dummy counter to simulate a 4cc delay from the cache to ensure the mem_stall works correctly
+    // assumption that the mem_memory_read/write will be asserted for the whole duration of the memory operastion
+    logic [2:0] dummy_counter;
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            dummy_counter <= 3'd0;
+        end else begin
+            if ((mem_memory_read || mem_memory_write) && (dummy_counter < 3'd5)) begin
+                dummy_counter <= dummy_counter + 1;
+            end else begin
+                dummy_counter <= 3'd0;
+            end
+        end
+    end
 
     // TODO implement a 2-phase FSM here. MEM_ACCEPT, MEM_RESPOND to handle the stalling of the cpu and the correct handling of the cpu-side valid/ready flags.
 
@@ -320,7 +339,7 @@ module riscv_cpu (
 
     // MEM/WB pipeline register
     always_ff @(posedge clk) begin
-        if (rst) begin
+        if (rst || mem_stall) begin
             wb_exec_result <= 32'b0; 
             wb_memory_to_reg <= 1'b0;  
             wb_rd_addr <= 5'b0;
