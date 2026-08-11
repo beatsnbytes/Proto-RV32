@@ -6,7 +6,7 @@ TOP     ?= and_gate_tb
 RTL_DIR  = ../rtl
 TB_DIR   = ../tb
 TB_ASSERT_DIR = ../tb/assertions
-CPU_DIR  = ../rtl/cpu
+#CPU_DIR  = ../rtl/cpu
 
 sim:
 	verilator --binary --sv --trace \

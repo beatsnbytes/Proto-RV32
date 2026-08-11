@@ -1,7 +1,6 @@
 // riscv_soc.sv
 // The top level module that connects riscv_cpu, the cache and the main memory model
 
-//TODO should I be executing my testbenches instantiating the soc module or continue with the cpu.
 //TODO change the assertions module hierarchies
 
 module riscv_soc (
@@ -44,9 +43,7 @@ module riscv_soc (
     logic [127:0] mem_resp_data;
 
 
-
-
-    direct_mapped_cache direct_mapped_cache_inst(
+    direct_mapped_cache direct_mapped_cache_inst(  // 1KB = 64 entries -- 128 bits wide each -- 4 * 32bit words
         .clk(clk),
         .rst(rst),
         // CPU-side
@@ -69,7 +66,7 @@ module riscv_soc (
         .mem_resp_data(mem_resp_data)   //128 bits deep
     );
 
-    main_memory main_memory_inst(
+    main_memory main_memory_inst( // 16KB main memory model -- 1024 entries --128 bits wide each -- 4 * 32bit words
         .clk(clk),
         .rst(rst),
         .mem_req_write(mem_req_write),  // Read = 0, Write = 1

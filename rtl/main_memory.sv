@@ -1,4 +1,4 @@
-    // main_memory_model.sv
+    // main_memory.sv
     // Currently a non synthesizable model of the main memory to be able to simulate the whole SoC
     
     //TODO put ports, instantiate memories and whatever else it needs.
@@ -22,25 +22,10 @@
     localparam int MEM_WORDS = MEM_LINES * 4;
     localparam int SHADOW_MEM_DEPTH = $clog2(MEM_WORDS) + 2;
     logic [127 : 0] backing_mem [MEM_LINES-1 : 0]; // What the cache-side has
-
-
-    int mem_req_read_cnt = 0;
-    int mem_req_write_cnt = 0;
-
-
     logic [31:0] base;
 
-
-
-        // Initialize the backing memory
-    initial begin
-        for(int i=0; i<=MEM_LINES-1; i++) begin
-            backing_mem[i][0 +: 32] = i*16 + 32'd0;
-            backing_mem[i][1*32 +: 32] = i*16 + 32'd4;
-            backing_mem[i][2*32 +: 32] = i*16 + 32'd8;
-            backing_mem[i][3*32 +: 32] = i*16 + 32'd12;
-        end
-    end
+    int read_latency;
+    
 
 
 
@@ -48,20 +33,24 @@
     initial begin
         mem_req_ready = 1'b1; // always ready to accept
         mem_resp_valid  = 1'b0;
-        mem_resp_data = '0;
+        mem_resp_data = 128'd0;
+
+
 
         forever begin
             @(posedge clk);
             if (mem_req_ready && mem_req_valid) begin
                 if (mem_req_write) begin
-                    mem_req_write_cnt = mem_req_write_cnt + 1;
-                    // backing_mem[mem_addr[(MEM_DEPTH-1):4]][mem_addr[3:2]*32 +: 32] = mem_wdata;
+                    //TODO add write response path (i.e mem_resp_valid) to the write path and make cache wait on mem_resp_valid to be symmetrically correct. Then I can add variable latency here. Currently its fire and forget.
+                    // read_latency = $urandom_range(2, 10);  // pick your min/max
+                    // repeat(read_latency) @(posedge clk); #1;
                     backing_mem[mem_addr[(MEM_DEPTH-1):4]] = mem_wdata; 
 
                 end else begin
-                    mem_req_read_cnt = mem_req_read_cnt + 1;
                     base = mem_addr;
-                    repeat(5) @(posedge clk); #1;
+                    read_latency = $urandom_range(2, 10);  // pick your min/max
+                    repeat(read_latency) @(posedge clk); #1;
+                    // repeat(5) @(posedge clk); #1;
                     mem_resp_data = backing_mem[base[(MEM_DEPTH-1):4]];
                     mem_resp_valid = 1'b1;
                     do begin

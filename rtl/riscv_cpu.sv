@@ -317,40 +317,60 @@ module riscv_cpu (
                     && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
 
 
-    //TODO remove the dummy and dmem logic and connect to the cache instead
-    //TODO generate cache signals (input/output) to drive the cache module and sample its outputs
-    //TODO maybe FSM?
+    // Following FSM model that takes care of the memory access (currently cache), design stall and the respective data transfers.
+    typedef enum logic[1:0] {
+        IDLE = 2'b00,
+        MEM_SEND_REQUEST = 2'b01,
+        MEM_WAIT_RESPONSE = 2'b10
+    } state_t;
 
-    assign cache_operation_done = (dummy_counter == 3'd5); 
-    assign mem_stall = ((mem_memory_read || mem_memory_write) && !cache_operation_done); 
-    
-    // Dummy counter to simulate a 4cc delay from the cache to ensure the mem_stall works correctly
-    // assumption that the mem_memory_read/write will be asserted for the whole duration of the memory operastion
-    logic [2:0] dummy_counter;
+    state_t current_state, next_state;
+
+    // State transition
     always_ff @(posedge clk) begin
-        if(rst) begin
-            dummy_counter <= 3'd0;
+        if (rst) begin
+            current_state <= IDLE;
         end else begin
-            if ((mem_memory_read || mem_memory_write) && (dummy_counter < 3'd5)) begin
-                dummy_counter <= dummy_counter + 1;
-            end else begin
-                dummy_counter <= 3'd0;
-            end
+            current_state <= next_state;
         end
     end
 
-    // TODO implement a 2-phase FSM here. MEM_ACCEPT, MEM_RESPOND to handle the stalling of the cpu and the correct handling of the cpu-side valid/ready flags.
-
-    // LOAD - combinational read from the dmem
-    assign memory_load_data = dmem[mem_exec_result[9:2]]; // TODO if we stall here then the wb_data needs to wait for the result, so needs to get bubbles? but in the case of no memory instruction the ex_wb_ex result gest fed directly to wb
-
-    // SW - synchronous write
-    always_ff @(posedge clk) begin
-        if (mem_memory_write) begin // Gate the memory write so unwanted values dont end up polluting the memory
-            dmem[mem_exec_result[9:2]] <= mem_memory_wr_data;
-        end    
+    // Next state logic
+    always_comb begin
+        case(current_state)
+            IDLE: next_state = (mem_memory_read || mem_memory_write) ? MEM_SEND_REQUEST : IDLE;
+            MEM_SEND_REQUEST: next_state = cpu_req_ready ? MEM_WAIT_RESPONSE : MEM_SEND_REQUEST;
+            MEM_WAIT_RESPONSE: next_state = cpu_resp_valid ? IDLE : MEM_WAIT_RESPONSE;
+            default: next_state = IDLE;
+        endcase
     end
-    //TODO logic up to here to be removed and replaced with dcache
+
+logic busy;
+    // Output logic
+    always_comb begin
+        cpu_req_valid = 1'b0;
+        cpu_req_write = 1'b0;
+        cpu_addr = 32'b0;
+        cpu_wdata = 32'b0;
+        cpu_resp_ready = 1'b0;
+        case(current_state)
+            MEM_SEND_REQUEST: begin
+                cpu_req_valid = 1'b1;
+                cpu_req_write = mem_memory_write;                
+                cpu_addr = mem_exec_result; // In the case of a memory instruction the computed adress comes from the output of the ALU
+                cpu_wdata = mem_memory_wr_data;
+            end
+            MEM_WAIT_RESPONSE: begin
+                cpu_resp_ready = 1'b1;
+            end 
+            default:;
+        endcase
+    end
+
+    assign mem_stall = (mem_memory_read || mem_memory_write) && !(cpu_resp_ready && cpu_resp_valid); // Safe only while cache handshake outputs are registered/glitch-free (Moore)
+    assign memory_load_data = (cpu_resp_ready && cpu_resp_valid) ? cpu_resp_data : 32'b0;
+
+    // End of cache-related FSM model
 
     // MEM/WB pipeline register
     always_ff @(posedge clk) begin

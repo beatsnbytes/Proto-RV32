@@ -25,11 +25,12 @@ module direct_mapped_cache (
 );
 
     localparam int ADDR_WIDTH = 32;
-    localparam int DATA_LINE_WIDTH = 128;
-    localparam int INDEX_WIDTH = 6;
-    localparam int OFFSET_WIDTH = 4;
-    localparam int TAG_WIDTH = ADDR_WIDTH - (INDEX_WIDTH + OFFSET_WIDTH);
     localparam int CACHE_ENTRIES = 64;
+    localparam int INDEX_WIDTH = $clog2(CACHE_ENTRIES);    
+    localparam int DATA_LINE_WIDTH = 128;
+    localparam int OFFSET_WIDTH = $clog2(DATA_LINE_WIDTH/8);
+    localparam int TAG_WIDTH = ADDR_WIDTH - (INDEX_WIDTH + OFFSET_WIDTH);
+    
 
     logic [31 : 0] cpu_addr_r;
     logic [TAG_WIDTH-1 : 0] tag;

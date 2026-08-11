@@ -1,17 +1,13 @@
 // program.hex
-// Simple 4 intruction program
 
-
-// ADDI x1, x0, 5     — load 5 into x1 --> 00500093
+// 1. Simple 4 intruction program
+// ADDI x1, x0, 5     — load 5 into x1 
+// ADDI x2, x0, 10    — load 10 into x2 
+// ADD  x3, x1, x2    — x3 = x1 + x2 = 15 
+// ADD  x4, x3, x1    — x4 = x3 + x1 = 20 
 //00500093
-
-// ADDI x2, x0, 10    — load 10 into x2 --> 00A00113
 //00A00113
-
-// ADD  x3, x1, x2    — x3 = x1 + x2 = 15 --> 002081B3
 //002081B3
-
-// ADD  x4, x3, x1    — x4 = x3 + x1 = 20 --> 00308233
 //00308233
 
 // Branch program
@@ -21,28 +17,29 @@
 //FE209EE3
 //06300193
 
-// Load Store program
+// 2. Load Store program
 //ADDI x1, x0, 42    — x1 = 42
 //ADDI x2, x0, 100   — x2 = base address for memory (byte address)
 //SW   x1, 0(x2)     — store 42 to mem[100]
 //LW   x3, 0(x2)     — load from mem[100] into x3
 //ADDI x4, x3, 1     - Expose the x3 value to verify success
-02A00093
-06400113
-00112023
-00012183
-00118213
+//02A00093
+//06400113
+//00112023
+//00012183
+//00118213
 
-//Hazard program
-//ADDI x1, x0, 5     — 00500093
-//ADD  x2, x1, x1    — 00108133
-//ADD  x3, x2, x2    — 00210133
+
+// 3. Hazard program
+//ADDI x1, x0, 5     — 
+//ADD  x2, x1, x1    — 
+//ADD  x3, x2, x2    — 
 //00500093
 //00108133
 //00210133
 
 
-
+// 4. Branch program
 //0x0  ADDI x1, x0, 1     x1=1 
 //0x4  ADDI x2, x1, 14    x2=15
 //0x8  ADDI  x3, x1,0    x3=1
@@ -58,19 +55,26 @@
 //00318233
 //FE311CE3
 
-
+// 5. Multiplication program
 # ADDI x1, x0, 3      → 00300093
 # ADDI x2, x0, 5      → 00500113
 # MUL  x3, x1, x2     → 022081B3
 # ADDI x4, x3, 1      → 00118213
-//00300093
-//00500113
-//022081B3
-//00118213
+
+//SW   x1, 0(x2)     — store 3 to mem[5]
+//LW   x3, 0(x2)     — load from mem[5] into x3
+//ADDI x4, x3, 1     - Expose the x3 value to verify success = 4
+00300093
+00500113
+022081B3
+00118213
+
+00112023
+00012183
+00118213
 
 
-// MUL with branching
-
+// 6. MUL with branching program
 //00400093   # ADDI x1, x0, 4     x1=4
 //00300113   # ADDI x2, x0, 3     x2=3     
 //022081B3   # MUL  x3, x1, x2    x3=12
@@ -82,16 +86,14 @@
 //FE039EE3   # BNE  x7, x0, -4    loops forever 
 
 
-// CSR
-
+// 7. CSR program
 // addi x1, x0, 5        # x1 = 5
 // csrrw x2, mtvec, x1   # x2 = old mtvec (0), mtvec = 5
 // csrrs x3, mtvec, x1   # x3 = old mtvec (5), mtvec = 5|5 = 5
 // addi x4, x0, 3        # x4 = 3
 // csrrw x5, mtvec, x4   # x5 = old mtvec (5), mtvec = 3
-
-//00500093   # addi x1, x0, 5
-//30509173   # csrrw x2, mtvec, x1
-//3050A1F3   # csrrs x3, mtvec, x1
-//00300213   # addi x4, x0, 3
-//305212F3   # csrrw x5, mtvec, x4
+//00500093   
+//30509173   
+//3050A1F3   
+//00300213   
+//305212F3 
