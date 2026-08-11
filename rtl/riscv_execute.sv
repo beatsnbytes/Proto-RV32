@@ -99,7 +99,6 @@ module riscv_execute (
         .op_b(op_b),
         .op(exec_op),
         .result(mul_result),
-        .done(mul_done),
         .busy(mul_busy)
     );
 

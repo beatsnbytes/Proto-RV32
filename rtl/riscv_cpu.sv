@@ -65,7 +65,7 @@ module riscv_cpu (
     logic mul_start, mul_busy;
     logic mul_done;
 
-    logic ex_mul_start;
+    logic ex_mul_start, ex_mul_start_interlocked;
     logic real_start;
     logic load_use_hzrd_bubble;
 
@@ -108,9 +108,6 @@ module riscv_cpu (
     logic [31:0] mem_pc, wb_pc;
     
 
-    //TODO something fishy about the mul signals, stalls, etc. Check them with a test and possibly debug.
-    // Pipeline stall for mul result waiting 
-    assign mul_stall = ((mul_start || mul_busy) && !mul_done); 
 
     // Combinational logic for the source of the pc. Either from branch instr or simple pc+4 -- 0  goes to pc+4 -- 1 source is from branch
     assign pc_src = ex_branch && ((ex_func3 == 3'b000 && zero) || (ex_func3 == 3'b001 && !zero));
@@ -120,9 +117,10 @@ module riscv_cpu (
     end
 
 //TODO Dont know if thats entirely correct. if thats an overkill. seems that mul_strt would suffice?
-    always_ff @(posedge clk) begin
-        real_start <= (((exec_op == 4'hA) || (exec_op == 4'hB)) && !mul_busy && !mul_done) ? 1'b1 : 1'b0;
-    end
+    // always_ff @(posedge clk) begin
+    //     real_start <= (((exec_op == 4'hA) || (exec_op == 4'hB)) && !mul_busy && !mul_done) ? 1'b1 : 1'b0;
+    // end
+    
 
 
     // Compute next pc
@@ -139,70 +137,7 @@ module riscv_cpu (
     end
 
     
-
-
-    always_ff @(posedge clk) begin
-        if(rst || pc_src) begin
-            ex_rs1_addr <= 5'b0;
-            ex_rs2_addr <= 5'b0;
-            ex_rd_addr <= 5'b0;
-            ex_imm <= 32'b0;
-            ex_exec_op <= 4'b0;
-            ex_reg_wr_en <= 1'b0;
-            ex_use_imm <= 1'b0;
-            ex_memory_read <= 1'b0;
-            ex_memory_write  <= 1'b0;
-            ex_memory_to_reg <= 1'b0;
-            ex_branch <= 1'b0;
-            ex_func3 <= 3'b0;
-            ex_csr_rd_en <= 1'b0;
-            ex_csr_wr_en <= 1'b0;
-            ex_csr_rw <= 1'b0;
-            ex_csr_addr <= 2'b0;
-        end else if (mem_stall) begin
-            // FREEZE - hold current values - no assignment needed here 
-        end else if (branch_stall || mul_busy || load_use_hzrd_bubble) begin
-            ex_rs1_addr <= 5'b0;
-            ex_rs2_addr <= 5'b0;
-            ex_rd_addr <= 5'b0;
-            ex_imm <= 32'b0;
-            ex_exec_op <= 4'b0;
-            ex_reg_wr_en <= 1'b0;
-            ex_use_imm <= 1'b0;
-            ex_memory_read <= 1'b0;
-            ex_memory_write  <= 1'b0;
-            ex_memory_to_reg <= 1'b0;
-            ex_branch <= 1'b0;
-            ex_func3 <= 3'b0; 
-            ex_csr_rd_en <= 1'b0;
-            ex_csr_wr_en <= 1'b0;
-            ex_csr_rw <= 1'b0;
-            ex_csr_addr <= 2'b0;
-        end else begin
-            ex_rs1_addr <= rs1_addr;
-            ex_rs2_addr <= rs2_addr;
-            ex_rd_addr <= rd_addr;
-            ex_imm <= imm;
-            ex_exec_op <= exec_op;
-            ex_reg_wr_en <= reg_wr_en;
-            ex_use_imm <= use_imm;
-            ex_memory_read <= memory_read;
-            ex_memory_write  <= memory_write;
-            ex_memory_to_reg <= memory_to_reg;
-            ex_branch <= branch;
-            ex_func3 <= func3;
-            ex_pc <= pc;
-            ex_csr_rd_en <= csr_rd_en;
-            ex_csr_wr_en <= csr_wr_en;
-            ex_csr_rw <= csr_rw;
-            ex_csr_addr <= csr_addr[1:0];
-        end
-    end
-
-    // Theoretically it will persist only for 1cc since when the NOPped ex register will flood EX stage then ex_memory_read=0 and load_bubble=0
-    assign load_use_hzrd_bubble = ex_memory_read && ((ex_rd_addr == rs1_addr) && (ex_rd_addr != 5'd0) || (ex_rd_addr == rs2_addr) && (ex_rd_addr != 5'd0)); // Insert an 1cc bubble if current instruction in execute is LOAD and the next instruction is dependent.
-
-    riscv_fetch_decode riscv_fetch_decode_inst(
+        riscv_fetch_decode riscv_fetch_decode_inst(
         .clk(clk),
         .rst(rst),
         .pc(pc),
@@ -225,6 +160,73 @@ module riscv_cpu (
         .csr_addr(csr_addr), // To csr regfile
         .csr_rw(csr_rw) // to Execute
     );
+
+
+
+    always_ff @(posedge clk) begin //TODO fix here. the two if contents are identical. I could put them in a single one. What about the priorities of rst, pc_src, load use hazard etc then?
+        if(rst || pc_src) begin
+            ex_rs1_addr <= 5'b0;
+            ex_rs2_addr <= 5'b0;
+            ex_rd_addr <= 5'b0;
+            ex_imm <= 32'b0;
+            ex_exec_op <= 4'b0;
+            ex_reg_wr_en <= 1'b0;
+            ex_use_imm <= 1'b0;
+            ex_memory_read <= 1'b0;
+            ex_memory_write  <= 1'b0;
+            ex_memory_to_reg <= 1'b0;
+            ex_branch <= 1'b0;
+            ex_func3 <= 3'b0;
+            ex_csr_rd_en <= 1'b0;
+            ex_csr_wr_en <= 1'b0;
+            ex_csr_rw <= 1'b0;
+            ex_csr_addr <= 2'b0;
+        end else if (mem_stall || mul_stall) begin
+            // FREEZE - hold current values - no assignment needed here 
+        end else if (branch_stall ||  load_use_hzrd_bubble) begin 
+            ex_rs1_addr <= 5'b0;
+            ex_rs2_addr <= 5'b0;
+            ex_rd_addr <= 5'b0;
+            ex_imm <= 32'b0;
+            ex_exec_op <= 4'b0;
+            ex_reg_wr_en <= 1'b0;
+            ex_use_imm <= 1'b0;
+            ex_memory_read <= 1'b0;
+            ex_memory_write  <= 1'b0;
+            ex_memory_to_reg <= 1'b0;
+            ex_branch <= 1'b0;
+            ex_func3 <= 3'b0; 
+            ex_csr_rd_en <= 1'b0;
+            ex_csr_wr_en <= 1'b0;
+            ex_csr_rw <= 1'b0;
+            ex_csr_addr <= 2'b0;
+            ex_mul_start <= 1'b0;
+        end else begin
+            ex_rs1_addr <= rs1_addr;
+            ex_rs2_addr <= rs2_addr;
+            ex_rd_addr <= rd_addr;
+            ex_imm <= imm;
+            ex_exec_op <= exec_op;
+            ex_reg_wr_en <= reg_wr_en;
+            ex_use_imm <= use_imm;
+            ex_memory_read <= memory_read;
+            ex_memory_write  <= memory_write;
+            ex_memory_to_reg <= memory_to_reg;
+            ex_branch <= branch;
+            ex_func3 <= func3;
+            ex_pc <= pc;
+            ex_csr_rd_en <= csr_rd_en;
+            ex_csr_wr_en <= csr_wr_en;
+            ex_csr_rw <= csr_rw;
+            ex_csr_addr <= csr_addr[1:0];
+            ex_mul_start <= mul_start;
+        end
+    end
+
+    assign mul_stall = mul_busy;
+
+    // Theoretically it will persist only for 1cc since when the NOPped ex register will flood EX stage then ex_memory_read=0 and load_bubble=0
+    assign load_use_hzrd_bubble = ex_memory_read && ((ex_rd_addr == rs1_addr) && (ex_rd_addr != 5'd0) || (ex_rd_addr == rs2_addr) && (ex_rd_addr != 5'd0)); // Insert an 1cc bubble if current instruction in execute is LOAD and the next instruction is dependent.
 
     // Put here the forwarding logic for the CSR instructions. 
     // If the instruction in EX stage is writing to CSR and the current instruction is reading from the same CSR, 
@@ -262,7 +264,7 @@ module riscv_cpu (
         .fwd_to_rs2(fwd_to_rs2),
         .wb_rd_addr(wb_rd_addr), 
         .wb_reg_wr_en(wb_reg_wr_en), 
-        .mul_start(real_start),
+        .mul_start(ex_mul_start),
         .exec_result(exec_result),
         .zero(zero),
         .memory_wr_data(memory_wr_data),
