@@ -29,8 +29,8 @@ module riscv_execute (
     output logic [31:0] exec_result,
     output logic zero,
     output logic [31:0] memory_wr_data,
-    output logic mul_done,
     output logic mul_busy,
+    input logic mul_to_reg,
     output logic [31:0] csr_wr_data
 );
 
@@ -102,27 +102,10 @@ module riscv_execute (
         .busy(mul_busy)
     );
 
-
-    //TODO run the multiply testbech and simplify if it can be done.
-    // register to latch mul result
-    always_ff @(posedge clk) begin
-        if (rst) begin
-           mul_result_latched <= 32'b0;
-           result_src <= 1'b0;
-        end else if (mul_done) begin
-            mul_result_latched <= mul_result;
-            result_src <= mul_done;
-        end else begin
-            result_src <= 1'b0;
-        end
-    end
-
-
-
     always_comb begin
         unique case(1'b1)
             csr_rd_en:  exec_result = csr_rd_data;
-            result_src: exec_result = mul_result_latched;
+            mul_to_reg: exec_result = mul_result;
             default:    exec_result = alu_result; // Default case is when result_src==0 and the ALU result takes priority           
         endcase
     end

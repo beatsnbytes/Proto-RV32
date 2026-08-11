@@ -22,6 +22,7 @@ module riscv_fetch_decode (
     output logic memory_write,
     output logic memory_to_reg, // 0 = ALU_RESULT, 1 = memory data
     output logic mul_start,
+    output logic mul_to_reg,
     // Output signals for the CSR file
     output logic csr_wr_en, 
     output logic csr_rd_en, 
@@ -63,6 +64,7 @@ module riscv_fetch_decode (
         memory_to_reg = 1'b0;
         // Default signals for multiplier
         mul_start = 1'b0;
+        mul_to_reg = 1'b0;
         // Default signals for CSR
         csr_rd_en  = 1'b0;
         csr_wr_en = 1'b0;
@@ -85,6 +87,7 @@ module riscv_fetch_decode (
                             7'b0000001 : begin
                                 exec_op = 4'b1010;
                                 mul_start = 1'b1;
+                                mul_to_reg = 1'b1;
                                 reg_wr_en = 1'b1;
                             end 
                             default : exec_op = 4'b0000;
@@ -102,6 +105,7 @@ module riscv_fetch_decode (
                             7'b0000001 : begin
                                 exec_op = 4'b1011;
                                 mul_start = 1'b1;
+                                mul_to_reg = 1'b1;
                                 reg_wr_en = 1'b1;
                             end
                             default: exec_op = 4'b0101;

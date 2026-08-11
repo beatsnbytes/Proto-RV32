@@ -65,7 +65,8 @@ module riscv_cpu (
     logic mul_start, mul_busy;
     logic mul_done;
 
-    logic ex_mul_start, ex_mul_start_interlocked;
+    logic ex_mul_start;
+    logic mul_to_reg, ex_mul_to_reg;
     logic real_start;
     logic load_use_hzrd_bubble;
 
@@ -155,6 +156,7 @@ module riscv_cpu (
         .memory_write(memory_write),
         .memory_to_reg(memory_to_reg),
         .mul_start(mul_start),
+        .mul_to_reg(mul_to_reg),
         .csr_wr_en(csr_wr_en), // To csr regfile directly
         .csr_rd_en(csr_rd_en), // To execute
         .csr_addr(csr_addr), // To csr regfile
@@ -181,6 +183,7 @@ module riscv_cpu (
             ex_csr_wr_en <= 1'b0;
             ex_csr_rw <= 1'b0;
             ex_csr_addr <= 2'b0;
+            ex_mul_to_reg <= 1'b0;
         end else if (mem_stall || mul_stall) begin
             // FREEZE - hold current values - no assignment needed here 
         end else if (branch_stall ||  load_use_hzrd_bubble) begin 
@@ -201,6 +204,7 @@ module riscv_cpu (
             ex_csr_rw <= 1'b0;
             ex_csr_addr <= 2'b0;
             ex_mul_start <= 1'b0;
+            ex_mul_to_reg <= 1'b0;
         end else begin
             ex_rs1_addr <= rs1_addr;
             ex_rs2_addr <= rs2_addr;
@@ -220,6 +224,7 @@ module riscv_cpu (
             ex_csr_rw <= csr_rw;
             ex_csr_addr <= csr_addr[1:0];
             ex_mul_start <= mul_start;
+            ex_mul_to_reg <= mul_to_reg;
         end
     end
 
@@ -268,8 +273,8 @@ module riscv_cpu (
         .exec_result(exec_result),
         .zero(zero),
         .memory_wr_data(memory_wr_data),
-        .mul_done(mul_done),
         .mul_busy(mul_busy),
+        .mul_to_reg(ex_mul_to_reg),
         .csr_rd_data(fwd_csr_rd_data),
         .csr_rd_en(ex_csr_rd_en),
         .csr_rw(ex_csr_rw),
