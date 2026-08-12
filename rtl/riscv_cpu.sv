@@ -23,9 +23,9 @@ module riscv_cpu (
     logic reg_wr_en;
     logic [31:0] instr;
     logic use_imm;
-    logic pc_src;
+    logic branch_taken;
     logic [2:0] func3;
-    logic branch;
+    logic branch_instr;
 
     logic memory_read, memory_write, memory_to_reg;
     logic [31:0] dmem [255:0]; // 1KB data memory
@@ -44,7 +44,7 @@ module riscv_cpu (
     logic ex_memory_read;
     logic ex_memory_write;
     logic ex_memory_to_reg;
-    logic ex_branch;
+    logic ex_branch_instr;
     logic [2:0] ex_func3;
     logic [31:0] ex_pc;
     logic [31:0] pc;
@@ -61,7 +61,7 @@ module riscv_cpu (
     logic mem_memory_write; 
     logic [31:0] mem_memory_wr_data;
 
-    logic branch_stall, mul_stall;
+    logic branch_shadow_ex_flush, mul_stall;
     logic mul_start, mul_busy;
     logic mul_done;
 
@@ -105,40 +105,22 @@ module riscv_cpu (
     logic [31:0] wb_memory_wr_data;
     logic fwd_wb_rs1, fwd_wb_rs2;
     logic [31:0] wb_memory_load_data;
-
     logic [31:0] mem_pc, wb_pc;
     
-
-
-    // Combinational logic for the source of the pc. Either from branch instr or simple pc+4 -- 0  goes to pc+4 -- 1 source is from branch
-    assign pc_src = ex_branch && ((ex_func3 == 3'b000 && zero) || (ex_func3 == 3'b001 && !zero));
-
-    always_ff @(posedge clk) begin
-        branch_stall <= pc_src;
-    end
-
-//TODO Dont know if thats entirely correct. if thats an overkill. seems that mul_strt would suffice?
-    // always_ff @(posedge clk) begin
-    //     real_start <= (((exec_op == 4'hA) || (exec_op == 4'hB)) && !mul_busy && !mul_done) ? 1'b1 : 1'b0;
-    // end
-    
-
-
     // Compute next pc
     always_ff @(posedge clk) begin
         if (rst) begin
             pc <= 32'd0;
-        end else if (pc_src) begin
+        end else if (branch_taken) begin
             pc <= ex_pc + ex_imm;
-        end else if (branch_stall || mul_stall || load_use_hzrd_bubble || mem_stall) begin
+        end else if ( mul_stall || load_use_hzrd_bubble || mem_stall) begin 
             // FREEZE - hold current value - no assignment needed
         end else begin
             pc <= pc + 32'd4;
         end
     end
-
     
-        riscv_fetch_decode riscv_fetch_decode_inst(
+    riscv_fetch_decode riscv_fetch_decode_inst(
         .clk(clk),
         .rst(rst),
         .pc(pc),
@@ -150,7 +132,7 @@ module riscv_cpu (
         .reg_wr_en(reg_wr_en),
         .instr(instr),
         .use_imm(use_imm),
-        .branch(branch),
+        .branch_instr(branch_instr),
         .func3(func3),
         .memory_read(memory_read),
         .memory_write(memory_write),
@@ -165,8 +147,8 @@ module riscv_cpu (
 
 
 
-    always_ff @(posedge clk) begin //TODO fix here. the two if contents are identical. I could put them in a single one. What about the priorities of rst, pc_src, load use hazard etc then?
-        if(rst || pc_src) begin
+    always_ff @(posedge clk) begin
+        if(rst || branch_taken) begin
             ex_rs1_addr <= 5'b0;
             ex_rs2_addr <= 5'b0;
             ex_rd_addr <= 5'b0;
@@ -177,16 +159,18 @@ module riscv_cpu (
             ex_memory_read <= 1'b0;
             ex_memory_write  <= 1'b0;
             ex_memory_to_reg <= 1'b0;
-            ex_branch <= 1'b0;
+            ex_branch_instr <= 1'b0;
             ex_func3 <= 3'b0;
             ex_csr_rd_en <= 1'b0;
             ex_csr_wr_en <= 1'b0;
             ex_csr_rw <= 1'b0;
             ex_csr_addr <= 2'b0;
             ex_mul_to_reg <= 1'b0;
+            ex_mul_start <= 1'b0;
+            ex_pc <= 32'b0;
         end else if (mem_stall || mul_stall) begin
             // FREEZE - hold current values - no assignment needed here 
-        end else if (branch_stall ||  load_use_hzrd_bubble) begin 
+        end else if (load_use_hzrd_bubble) begin // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
             ex_rs1_addr <= 5'b0;
             ex_rs2_addr <= 5'b0;
             ex_rd_addr <= 5'b0;
@@ -197,7 +181,7 @@ module riscv_cpu (
             ex_memory_read <= 1'b0;
             ex_memory_write  <= 1'b0;
             ex_memory_to_reg <= 1'b0;
-            ex_branch <= 1'b0;
+            ex_branch_instr <= 1'b0;
             ex_func3 <= 3'b0; 
             ex_csr_rd_en <= 1'b0;
             ex_csr_wr_en <= 1'b0;
@@ -205,6 +189,7 @@ module riscv_cpu (
             ex_csr_addr <= 2'b0;
             ex_mul_start <= 1'b0;
             ex_mul_to_reg <= 1'b0;
+            ex_pc <= 32'b0;
         end else begin
             ex_rs1_addr <= rs1_addr;
             ex_rs2_addr <= rs2_addr;
@@ -216,7 +201,7 @@ module riscv_cpu (
             ex_memory_read <= memory_read;
             ex_memory_write  <= memory_write;
             ex_memory_to_reg <= memory_to_reg;
-            ex_branch <= branch;
+            ex_branch_instr <= branch_instr;
             ex_func3 <= func3;
             ex_pc <= pc;
             ex_csr_rd_en <= csr_rd_en;
@@ -227,6 +212,10 @@ module riscv_cpu (
             ex_mul_to_reg <= mul_to_reg;
         end
     end
+
+    // Combinational logic for the source of the pc. Either from branch instr or simple pc+4 -- 0  goes to pc+4 -- 1 source is from branch
+    // func3 = 3'b000 is BEQ and func3 = 3'b001 is BNE
+    assign branch_taken = ex_branch_instr && ((ex_func3 == 3'b000 && zero) || (ex_func3 == 3'b001 && !zero));
 
     assign mul_stall = mul_busy;
 
@@ -280,7 +269,6 @@ module riscv_cpu (
         .csr_rw(ex_csr_rw),
         .csr_wr_data(csr_wr_data) // The data to be wrtten to the csr
     );
-
 
 
     // MEM/EX pipeline register
@@ -408,16 +396,12 @@ logic busy;
         end
     end
 
-
-
     // Writeback MUX
     assign wb_data = wb_memory_to_reg ? wb_memory_load_data : wb_exec_result;
 
     // Forwarding logic for the WB stage
     assign fwd_wb_rs1 = ((ex_rs1_addr == wb_rd_addr) && (wb_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
     assign fwd_wb_rs2 = ((ex_rs2_addr == wb_rd_addr) && (wb_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
-
-
 
 
     // Priority encoders for the forwarding logic from mem and wb stages. When both asserted MEM wins since its latest instruction with most up-to-date value

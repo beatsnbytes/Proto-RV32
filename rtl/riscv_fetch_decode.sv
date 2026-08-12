@@ -15,7 +15,7 @@ module riscv_fetch_decode (
     output logic reg_wr_en,
     output logic [31:0] instr,
     output logic use_imm, // 0 = use rs2, 1 use imm
-    output logic branch,
+    output logic branch_instr,
     output logic [2:0] func3,
     // Output signals from LW/SW instr
     output logic memory_read, 
@@ -57,7 +57,7 @@ module riscv_fetch_decode (
         reg_wr_en = 1'b0;
         imm = 32'b0;
         use_imm = 1'b0; // Get value from rs2
-        branch = 1'b0;
+        branch_instr = 1'b0;
         // Default signals for data memory
         memory_read = 1'b0;
         memory_write = 1'b0;
@@ -77,6 +77,7 @@ module riscv_fetch_decode (
             7'b0110011 : begin
                 use_imm = 1'b0;
                 reg_wr_en = 1'b1;
+
                 case (func3)
                     // ADD/SUB and MUL
                     // 3'b000 : exec_op = (func7 == 7'b0000000) ? 4'b0000 : 4'b0001;
@@ -118,6 +119,8 @@ module riscv_fetch_decode (
                     // SLTU
                     3'b011 : exec_op = 4'b1001;  
                 endcase
+
+
             end
             // 7'b0010011 — I-type  (ADDI, ANDI, ORI, XORI, SLLI, SRLI, SRAI, SLTI, SLTIU)
             7'b0010011: begin
@@ -144,10 +147,11 @@ module riscv_fetch_decode (
                 endcase
             end
             // 7'b1100011 B-Type instructions BEQ, BNE
+            // func3 = 3'b000 is BEQ and func3 = 3'b001 is BNE
             7'b1100011 : begin
                 // use_imm = 1'b0;
                 imm = { {20{instr[31]}}, instr[7], instr[30:25], instr[11:8], 1'b0};
-                branch = 1'b1;
+                branch_instr = 1'b1;
                 exec_op = 4'b0001; // SUB  rs1 - rs2, check zero flag
             end
             // 7'b0000011 LW

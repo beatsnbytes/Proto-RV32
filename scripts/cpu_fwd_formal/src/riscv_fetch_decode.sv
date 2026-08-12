@@ -15,7 +15,7 @@ module riscv_fetch_decode (
     output logic reg_wr_en,
     output logic [31:0] instr,
     output logic alu_src, // 0 = use rs2, 1 use imm
-    output logic branch,
+    output logic branch_instr,
     output logic [2:0] func3,
     // Output signals from LW/SW instr
     output logic mem_read, 
@@ -56,7 +56,7 @@ module riscv_fetch_decode (
         reg_wr_en = 1'b0;
         imm = 32'b0;
         alu_src = 1'b0; // Get value from rs2
-        branch = 1'b0;
+        branch_instr = 1'b0;
         // Default signals for data memory
         mem_read = 1'b0;
         mem_write = 1'b0;
@@ -143,7 +143,7 @@ module riscv_fetch_decode (
             7'b1100011 : begin
                 // alu_src = 1'b0;
                 imm = { {20{instr[31]}}, instr[7], instr[30:25], instr[11:8], 1'b0};
-                branch = 1'b1;
+                branch_instr = 1'b1;
                 ex_op = 4'b0001; // SUB  rs1 - rs2, check zero flag
             end
             // 7'b0000011 LW
