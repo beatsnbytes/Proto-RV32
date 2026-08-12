@@ -11,7 +11,7 @@ module riscv_execute (
     input logic [4:0] rd_addr,
     input logic reg_wr_en,
     input logic use_imm,
-    input logic [3:0] exec_op,
+    input logic [4:0] exec_op,
     input logic [31:0] imm,
     input logic [31:0] mem_fwd_data,
     input logic [31:0] wb_fwd_data,

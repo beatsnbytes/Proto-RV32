@@ -11,7 +11,7 @@ module riscv_fetch_decode (
     output logic [4:0] rs2_addr,
     output logic [4:0] rd_addr,
     output logic [31:0] imm,
-    output logic [3:0] exec_op,
+    output logic [4:0] exec_op, // 32 instructions are enough for the whole rv32im extension
     output logic reg_wr_en,
     output logic [31:0] instr,
     output logic use_imm, // 0 = use rs2, 1 use imm
@@ -53,7 +53,7 @@ module riscv_fetch_decode (
 
     always_comb begin
 
-        exec_op = 4'b0000; // Default ADD
+        exec_op = 5'b0; // Default ADD
         reg_wr_en = 1'b0;
         imm = 32'b0;
         use_imm = 1'b0; // Get value from rs2
@@ -83,41 +83,41 @@ module riscv_fetch_decode (
                     // 3'b000 : exec_op = (func7 == 7'b0000000) ? 4'b0000 : 4'b0001;
                     3'b000 : begin
                         case (func7)
-                            7'b0000000 : exec_op = 4'b0000;
-                            7'b0100000 : exec_op = 4'b0001;
+                            7'b0000000 : exec_op = 5'b00000;
+                            7'b0100000 : exec_op = 5'b00001;
                             7'b0000001 : begin
-                                exec_op = 4'b1010;
+                                exec_op = 5'b01010;
                                 mul_start = 1'b1;
                                 mul_to_reg = 1'b1;
                                 reg_wr_en = 1'b1;
                             end 
-                            default : exec_op = 4'b0000;
+                            default : exec_op = 5'b00000;
                         endcase
                     end
                     // AND
-                    3'b111  : exec_op = 4'b0010;
+                    3'b111  : exec_op = 5'b00010;
                     // OR
-                    3'b110 : exec_op = 4'b0011;
+                    3'b110 : exec_op = 5'b00011;
                     // XOR
-                    3'b100 : exec_op = 4'b0100;
+                    3'b100 : exec_op = 5'b00100;
                     // MULH SLL
                     3'b001 : begin
                         case (func7)
                             7'b0000001 : begin
-                                exec_op = 4'b1011;
+                                exec_op = 5'b01011;
                                 mul_start = 1'b1;
                                 mul_to_reg = 1'b1;
                                 reg_wr_en = 1'b1;
                             end
-                            default: exec_op = 4'b0101;
+                            default: exec_op = 5'b00101;
                         endcase
                     end 
                     // SRL/SRA
-                    3'b101 : exec_op = func7[5] ? 4'b0111 : 4'b0110;
+                    3'b101 : exec_op = func7[5] ? 5'b00111 : 5'b00110;
                     // SLT
-                    3'b010 : exec_op = 4'b1000;
+                    3'b010 : exec_op = 5'b01000;
                     // SLTU
-                    3'b011 : exec_op = 4'b1001;  
+                    3'b011 : exec_op = 5'b01001;  
                 endcase
 
 
@@ -129,21 +129,21 @@ module riscv_fetch_decode (
                 imm = {{20{instr[31]}}, instr[31:20]};
                 case(func3)
                     // ADDI
-                    3'b000 : exec_op = 4'b0000;
+                    3'b000 : exec_op = 5'b00000;
                     // SLLI
-                    3'b001 : exec_op = 4'b0101;
+                    3'b001 : exec_op = 5'b00101;
                     // SLTI
-                    3'b010 : exec_op = 4'b1000;
+                    3'b010 : exec_op = 5'b01000;
                     // SLTIU
-                    3'b011 : exec_op = 4'b1001;
+                    3'b011 : exec_op = 5'b01001;
                     // XORI
-                    3'b100 : exec_op = 4'b0100;
+                    3'b100 : exec_op = 5'b00100;
                     // SRLI/SRAI
-                    3'b101 : exec_op = func7[5] ? 4'b0111 : 4'b0110;
+                    3'b101 : exec_op = func7[5] ? 5'b00111 : 5'b00110;
                     // ORI
-                    3'b110 : exec_op = 4'b0011; 
+                    3'b110 : exec_op = 5'b00011; 
                     // ANDI
-                    3'b111 : exec_op = 4'b0010;    
+                    3'b111 : exec_op = 5'b00010;    
                 endcase
             end
             // 7'b1100011 B-Type instructions BEQ, BNE
@@ -152,7 +152,7 @@ module riscv_fetch_decode (
                 // use_imm = 1'b0;
                 imm = { {20{instr[31]}}, instr[7], instr[30:25], instr[11:8], 1'b0};
                 branch_instr = 1'b1;
-                exec_op = 4'b0001; // SUB  rs1 - rs2, check zero flag
+                exec_op = 5'b00001; // SUB  rs1 - rs2, check zero flag
             end
             // 7'b0000011 LW
             7'b0000011 : begin
@@ -161,14 +161,14 @@ module riscv_fetch_decode (
                 memory_to_reg = memory_read && reg_wr_en;
                 imm = {{20{instr[31]}}, instr[31:20]}; 
                 use_imm = 1'b1;
-                // exec_op is 4'b0000 ADD as the default case
+                // exec_op is 5'b00000 ADD as the default case
             end
             // 7'b0100011 SW
             7'b0100011 : begin
                 memory_write = 1'b1;
                 imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};
                 use_imm = 1'b1;
-                // exec_op is 4'b0000 ADD as the default case
+                // exec_op is 5'b00000 ADD as the default case
             end
             // CSRRW, CSRRS 
             7'b1110011: begin

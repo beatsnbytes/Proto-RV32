@@ -8,7 +8,7 @@ module riscv_mul(
     input logic start,
     input logic [31:0] op_a,
     input logic [31:0] op_b,
-    input logic [3:0] op,
+    input logic [4:0] op,
     output logic [31:0] result,
     output logic busy
 );
@@ -16,7 +16,7 @@ module riscv_mul(
 
     logic [4:0] bit_idx; // To index 32 bit positions
     logic [31:0] op_a_latched, op_b_latched;
-    logic [3:0] op_latched;
+    logic [4:0] op_latched;
     logic [63:0] running_total;
 
     typedef enum logic[1:0] {
@@ -50,7 +50,7 @@ module riscv_mul(
         if (rst) begin
             op_a_latched <= 32'b0;
             op_b_latched <= 32'b0;
-            op_latched <= 4'b0;
+            op_latched <= 5'b0;
             bit_idx <= 5'b0;
             running_total <= 64'b0;
         end else begin
@@ -73,8 +73,8 @@ module riscv_mul(
         case(current_state)
             DONE: begin
                 case (op_latched)
-                    4'b1010: result = running_total[31:0];
-                    4'b1011: result = running_total[63:32];
+                    5'b01010: result = running_total[31:0];
+                    5'b01011: result = running_total[63:32];
                     default: result = 32'b0;
                 endcase
             end

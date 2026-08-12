@@ -1,14 +1,14 @@
 // program.hex
 
 // Stress multiplier and forwarding paths
-//00300093   # ADDI x1, x0, 3      x1 = 3
-//00500113   # ADDI x2, x0, 5      x2 = 5
-//022081B3   # MUL  x3, x1, x2     x3 = 15
-//00312023   # SW   x3, 0(x2)      mem[5] = 15
-//00012203   # LW   x4, 0(x2)      x4 = 15
-//024182B3   # MUL  x5, x3, x4     x5 = 225
-//02428333   # MUL  x6, x5, x4     x6 = 3375
-//005303B3   # ADD  x7, x6, x5     x7 = 3600
+00300093   # ADDI x1, x0, 3      x1 = 3
+00500113   # ADDI x2, x0, 5      x2 = 5
+022081B3   # MUL  x3, x1, x2     x3 = 15
+00312023   # SW   x3, 0(x2)      mem[5] = 15
+00012203   # LW   x4, 0(x2)      x4 = 15
+024182B3   # MUL  x5, x3, x4     x5 = 225
+02428333   # MUL  x6, x5, x4     x6 = 3375
+005303B3   # ADD  x7, x6, x5     x7 = 3600
 
 
 // Exercise eviction
@@ -75,12 +75,12 @@
 //14D00613  # ADDI x12,x0,333
 
 // TEST E — Backward branch / loop (3-iteration countdown):
-00300093  # ADDI x1,x0,3     counter
-00000113  # ADDI x2,x0,0     accumulator
-00A10113  # ADDI x2,x2,10   LOOP: x2+=10
-FFF08093  # ADDI x1,x1,-1    x1-=1
-FE009CE3  # BNE x1,x0,-8     if x1≠0 → back to 0x08
-3E700593  # ADDI x11,x0,999  exit
+//00300093  # ADDI x1,x0,3     counter
+//00000113  # ADDI x2,x0,0     accumulator
+//00A10113  # ADDI x2,x2,10   LOOP: x2+=10
+//FFF08093  # ADDI x1,x1,-1    x1-=1
+//FE009CE3  # BNE x1,x0,-8     if x1≠0 → back to 0x08
+//3E700593  # ADDI x11,x0,999  exit
 
 
 

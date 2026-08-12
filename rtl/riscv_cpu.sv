@@ -19,7 +19,7 @@ module riscv_cpu (
 
     logic [4:0] rs1_addr, rs2_addr, rd_addr;
     logic [31:0] imm;
-    logic [3:0] exec_op;
+    logic [4:0] exec_op;
     logic reg_wr_en;
     logic [31:0] instr;
     logic use_imm;
@@ -38,7 +38,7 @@ module riscv_cpu (
     logic [4:0] ex_rs1_addr, ex_rs2_addr;
     logic [4:0] ex_rd_addr;
     logic [31:0] ex_imm;
-    logic [3:0] ex_exec_op;
+    logic [4:0] ex_exec_op;
     logic ex_reg_wr_en;
     logic ex_use_imm;
     logic ex_memory_read;
@@ -153,7 +153,7 @@ module riscv_cpu (
             ex_rs2_addr <= 5'b0;
             ex_rd_addr <= 5'b0;
             ex_imm <= 32'b0;
-            ex_exec_op <= 4'b0;
+            ex_exec_op <= 5'b0;
             ex_reg_wr_en <= 1'b0;
             ex_use_imm <= 1'b0;
             ex_memory_read <= 1'b0;
@@ -175,7 +175,7 @@ module riscv_cpu (
             ex_rs2_addr <= 5'b0;
             ex_rd_addr <= 5'b0;
             ex_imm <= 32'b0;
-            ex_exec_op <= 4'b0;
+            ex_exec_op <= 5'b0;
             ex_reg_wr_en <= 1'b0;
             ex_use_imm <= 1'b0;
             ex_memory_read <= 1'b0;
