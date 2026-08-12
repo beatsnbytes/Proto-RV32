@@ -1,97 +1,86 @@
 // program.hex
-// Simple 4 intruction program
+
+// Stress multiplier and forwarding paths
+//00300093   # ADDI x1, x0, 3      x1 = 3
+//00500113   # ADDI x2, x0, 5      x2 = 5
+//022081B3   # MUL  x3, x1, x2     x3 = 15
+//00312023   # SW   x3, 0(x2)      mem[5] = 15
+//00012203   # LW   x4, 0(x2)      x4 = 15
+//024182B3   # MUL  x5, x3, x4     x5 = 225
+//02428333   # MUL  x6, x5, x4     x6 = 3375
+//005303B3   # ADD  x7, x6, x5     x7 = 3600
 
 
-// ADDI x1, x0, 5     — load 5 into x1 --> 00500093
-//00500093
-
-// ADDI x2, x0, 10    — load 10 into x2 --> 00A00113
-//00A00113
-
-// ADD  x3, x1, x2    — x3 = x1 + x2 = 15 --> 002081B3
-//002081B3
-
-// ADD  x4, x3, x1    — x4 = x3 + x1 = 20 --> 00308233
-//00308233
-
-// Branch program
-//00000093
-//00500113
-//00108093
-//FE209EE3
-//06300193
-
-// Load Store program
-//ADDI x1, x0, 42    — x1 = 42
-//ADDI x2, x0, 100   — x2 = base address for memory (byte address)
-//SW   x1, 0(x2)     — store 42 to mem[100]
-//LW   x3, 0(x2)     — load from mem[100] into x3
-//ADDI x4, x3, 1     - Expose the x3 value to verify success
-//02A00093
-//06400113
-//00112023
-//00012183
-//00118213
-
-//Hazard program
-//ADDI x1, x0, 5     — 00500093
-//ADD  x2, x1, x1    — 00108133
-//ADD  x3, x2, x2    — 00210133
-//00500093
-//00108133
-//00210133
+// Exercise eviction
+//02000093   # ADDI x1, x0, 0x20     x1 = A   (index 2, tag 0)
+//42000113   # ADDI x2, x0, 0x420    x2 = B   (index 2, tag 1) — collides with A
+//0AA00193   # ADDI x3, x0, 0xAA     x3 = 0xAA (value for A)
+//0BB00213   # ADDI x4, x0, 0xBB     x4 = 0xBB (value for B)
+//0030A023   # SW   x3, 0(x1)        mem/cache[A] = 0xAA  → block A dirty in set 2
+//00412023   # SW   x4, 0(x2)        store B → same set, evicts dirty A (write-back!)
+//0000A283   # LW   x5, 0(x1)        load A → miss, refetch from main mem → x5 = 0xAA
+//00128313   # ADDI x6, x5, 1        x6 = 0xAB  (visible success marker)
 
 
+// Branch-flush probe
+//00700093   # ADDI x1, x0, 7      x1 = 7
+//00700113   # ADDI x2, x0, 7      x2 = 7   (x1==x2 → BEQ taken)
+//00000513   # ADDI x10,x0, 0      x10 = 0  (canary marker, stays 0 if flush works)
+//00208863   # BEQ  x1, x2, +16    taken → target 0x1C
+//06F00513   # ADDI x10,x0, 111    SHADOW canary 1 — must NOT execute
+//0DE00513   # ADDI x10,x0, 222    SHADOW canary 2 — must NOT execute
+//14D00513   # ADDI x10,x0, 333    (skipped by target too)
+//3E700593   # ADDI x11,x0, 999    TARGET — should execute → x11 = 999
 
-//0x0  ADDI x1, x0, 1     x1=1 
-//0x4  ADDI x2, x1, 14    x2=15
-//0x8  ADDI  x3, x1,0    x3=1
-//0xc   ADDI x1, x1, 1     x1=2
-//0x10  ADD  x3, x1, x3    x3=3
-//0x14  ADD  x4, x3, x3    x4=6
-//0x18  BNE  x2, x3, -12   if x2≠x3 jump to pc=0xc
-//00100093
-//00E08113
-//00008193
-//00108093
-//003081B3
-//00318233
-//FE311CE3
+// TEST A — BNE taken (the func3=001 path, which your BEQ test didn't exercise):
+// PASS: x10=0, x11=999. Confirms the !zero branch condition works, not just BEQ.
+//00500093  # ADDI x1,x0,5
+//00900113  # ADDI x2,x0,9
+//00000513  # ADDI x10,x0,0
+//00209863  # BNE x1,x2,+16   → taken (5≠9), target 0x1C
+//06F00513  # ADDI x10,x0,111  ← shadow, must die
+//0DE00513  # ADDI x10,x0,222  ← shadow, must die
+//14D00513  # ADDI x10,x0,333
+//3E700593  # ADDI x11,x0,999  ← target
+
+// TEST B — Not-taken (confirms you don't over-flush):
+// PASS: x10=111, x11=222, x12=333. If any is 0, you're flushing on not-taken (over-flush bug).
+//00500093  # ADDI x1,x0,5
+//00900113  # ADDI x2,x0,9
+//00208863  # BEQ x1,x2,+16   → NOT taken (5≠9)
+//06F00513  # ADDI x10,x0,111  ← MUST execute
+//0DE00593  # ADDI x11,x0,222  ← MUST execute
+//14D00613  # ADDI x12,x0,333  ← MUST execute
+
+// TEST C — Data-dependent branch, loose (producer 3 before branch):
+// PASS: x11=999, x10=0.
+//00500093  # ADDI x1,x0,5
+//00500113  # ADDI x2,x0,5
+//002081B3  # ADD  x3,x1,x2    → x3=10
+//00000513  # ADDI x10,x0,0
+//00A00213  # ADDI x4,x0,10
+//00418663  # BEQ x3,x4,+12    → taken if x3==10, target 0x20
+//06F00513  # ADDI x10,x0,111  ← shadow
+//0DE00513  # ADDI x10,x0,222
+//3E700593  # ADDI x11,x0,999  ← target
+
+// TEST D — Data-dependent branch, TIGHT (producer immediately before branch — the real forwarding stress):
+//00400093  # ADDI x1,x0,4
+//00400113  # ADDI x2,x0,4
+//00000513  # ADDI x10,x0,0
+//002082B3  # ADD  x5,x1,x2    → x5=8, RIGHT before branch
+//00128663  # BEQ x5,x1,+12    → 8≠4, NOT taken
+//06F00513  # ADDI x10,x0,111  ← should run
+//0DE00593  # ADDI x11,x0,222  ← should run
+//14D00613  # ADDI x12,x0,333
+
+// TEST E — Backward branch / loop (3-iteration countdown):
+00300093  # ADDI x1,x0,3     counter
+00000113  # ADDI x2,x0,0     accumulator
+00A10113  # ADDI x2,x2,10   LOOP: x2+=10
+FFF08093  # ADDI x1,x1,-1    x1-=1
+FE009CE3  # BNE x1,x0,-8     if x1≠0 → back to 0x08
+3E700593  # ADDI x11,x0,999  exit
 
 
-# ADDI x1, x0, 3      → 00300093
-# ADDI x2, x0, 5      → 00500113
-# MUL  x3, x1, x2     → 022081B3
-# ADDI x4, x3, 1      → 00118213
-//00300093
-//00500113
-//022081B3
-//00118213
 
-
-// MUL with branching
-
-//00400093   # ADDI x1, x0, 4     x1=4
-//00300113   # ADDI x2, x0, 3     x2=3     
-//022081B3   # MUL  x3, x1, x2    x3=12
-//00118233   # ADD  x4, x3, x1    x4=16
-//00820263   # BEQ  x4, x0, +8    not branch
-//00100293   # ADDI x5, x0, 1     x5=1
-//02518333   # MUL  x6, x3, x5    x6=12  
-//00530393   # ADDI x7, x6, 5     x7=17
-//FE039EE3   # BNE  x7, x0, -4    loops forever 
-
-
-// CSR
-
-// addi x1, x0, 5        # x1 = 5
-// csrrw x2, mtvec, x1   # x2 = old mtvec (0), mtvec = 5
-// csrrs x3, mtvec, x1   # x3 = old mtvec (5), mtvec = 5|5 = 5
-// addi x4, x0, 3        # x4 = 3
-// csrrw x5, mtvec, x4   # x5 = old mtvec (5), mtvec = 3
-
-00500093   # addi x1, x0, 5
-30509173   # csrrw x2, mtvec, x1
-3050A1F3   # csrrs x3, mtvec, x1
-00300213   # addi x4, x0, 3
-305212F3   # csrrw x5, mtvec, x4

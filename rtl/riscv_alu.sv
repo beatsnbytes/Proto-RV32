@@ -7,7 +7,7 @@ module riscv_alu(
     input logic [31:0] a, // First operand
     input logic [31:0] b, // Second operand
     output logic [31:0] result, 
-    output logic zero // 1-bit flag - High when result==0 - Used by branch insn
+    output logic zero // 1-bit flag - High when result==0 - Used by branch instr
 );
     always_comb begin
         case (op)
