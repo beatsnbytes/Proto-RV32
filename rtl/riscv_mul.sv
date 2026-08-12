@@ -73,8 +73,8 @@ module riscv_mul(
         case(current_state)
             DONE: begin
                 case (op_latched)
-                    5'b01010: result = running_total[31:0];
-                    5'b01011: result = running_total[63:32];
+                    5'b10000: result = running_total[31:0];
+                    5'b10111: result = running_total[63:32];
                     default: result = 32'b0;
                 endcase
             end

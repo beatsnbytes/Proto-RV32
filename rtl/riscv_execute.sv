@@ -20,7 +20,7 @@ module riscv_execute (
     input logic [1:0] fwd_to_rs2,
     input logic [4:0] wb_rd_addr,
     input logic wb_reg_wr_en, 
-    input logic mul_start,
+    input logic muldiv_start,
     // CSR-related
     input logic [31:0] csr_rd_data,
     input logic csr_rd_en, 
@@ -29,8 +29,8 @@ module riscv_execute (
     output logic [31:0] exec_result,
     output logic zero,
     output logic [31:0] memory_wr_data,
-    output logic mul_busy,
-    input logic mul_to_reg,
+    output logic muldiv_busy,
+    input logic muldiv_to_reg,
     output logic [31:0] csr_wr_data
 );
 
@@ -94,18 +94,18 @@ module riscv_execute (
     riscv_mul riscv_mul_inst(
         .clk(clk),
         .rst(rst),
-        .start(mul_start),
+        .start(muldiv_start),
         .op_a(op_a),
         .op_b(op_b),
         .op(exec_op),
         .result(mul_result),
-        .busy(mul_busy)
+        .busy(muldiv_busy)
     );
 
     always_comb begin
         unique case(1'b1)
             csr_rd_en:  exec_result = csr_rd_data;
-            mul_to_reg: exec_result = mul_result;
+            muldiv_to_reg: exec_result = mul_result;
             default:    exec_result = alu_result; // Default case is when result_src==0 and the ALU result takes priority           
         endcase
     end

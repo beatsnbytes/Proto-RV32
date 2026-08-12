@@ -61,12 +61,12 @@ module riscv_cpu (
     logic mem_memory_write; 
     logic [31:0] mem_memory_wr_data;
 
-    logic branch_shadow_ex_flush, mul_stall;
-    logic mul_start, mul_busy;
+    logic branch_shadow_ex_flush, muldiv_stall;
+    logic muldiv_start, muldiv_busy;
     logic mul_done;
 
-    logic ex_mul_start;
-    logic mul_to_reg, ex_mul_to_reg;
+    logic ex_muldiv_start;
+    logic muldiv_to_reg, ex_muldiv_to_reg;
     logic real_start;
     logic load_use_hzrd_bubble;
 
@@ -113,7 +113,7 @@ module riscv_cpu (
             pc <= 32'd0;
         end else if (branch_taken) begin
             pc <= ex_pc + ex_imm;
-        end else if ( mul_stall || load_use_hzrd_bubble || mem_stall) begin 
+        end else if ( muldiv_stall || load_use_hzrd_bubble || mem_stall) begin 
             // FREEZE - hold current value - no assignment needed
         end else begin
             pc <= pc + 32'd4;
@@ -137,8 +137,8 @@ module riscv_cpu (
         .memory_read(memory_read),
         .memory_write(memory_write),
         .memory_to_reg(memory_to_reg),
-        .mul_start(mul_start),
-        .mul_to_reg(mul_to_reg),
+        .muldiv_start(muldiv_start),
+        .muldiv_to_reg(muldiv_to_reg),
         .csr_wr_en(csr_wr_en), // To csr regfile directly
         .csr_rd_en(csr_rd_en), // To execute
         .csr_addr(csr_addr), // To csr regfile
@@ -165,10 +165,10 @@ module riscv_cpu (
             ex_csr_wr_en <= 1'b0;
             ex_csr_rw <= 1'b0;
             ex_csr_addr <= 2'b0;
-            ex_mul_to_reg <= 1'b0;
-            ex_mul_start <= 1'b0;
+            ex_muldiv_to_reg <= 1'b0;
+            ex_muldiv_start <= 1'b0;
             ex_pc <= 32'b0;
-        end else if (mem_stall || mul_stall) begin
+        end else if (mem_stall || muldiv_stall) begin
             // FREEZE - hold current values - no assignment needed here 
         end else if (load_use_hzrd_bubble) begin // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
             ex_rs1_addr <= 5'b0;
@@ -187,8 +187,8 @@ module riscv_cpu (
             ex_csr_wr_en <= 1'b0;
             ex_csr_rw <= 1'b0;
             ex_csr_addr <= 2'b0;
-            ex_mul_start <= 1'b0;
-            ex_mul_to_reg <= 1'b0;
+            ex_muldiv_start <= 1'b0;
+            ex_muldiv_to_reg <= 1'b0;
             ex_pc <= 32'b0;
         end else begin
             ex_rs1_addr <= rs1_addr;
@@ -208,8 +208,8 @@ module riscv_cpu (
             ex_csr_wr_en <= csr_wr_en;
             ex_csr_rw <= csr_rw;
             ex_csr_addr <= csr_addr[1:0];
-            ex_mul_start <= mul_start;
-            ex_mul_to_reg <= mul_to_reg;
+            ex_muldiv_start <= muldiv_start;
+            ex_muldiv_to_reg <= muldiv_to_reg;
         end
     end
 
@@ -217,7 +217,7 @@ module riscv_cpu (
     // func3 = 3'b000 is BEQ and func3 = 3'b001 is BNE
     assign branch_taken = ex_branch_instr && ((ex_func3 == 3'b000 && zero) || (ex_func3 == 3'b001 && !zero));
 
-    assign mul_stall = mul_busy;
+    assign muldiv_stall = muldiv_busy;
 
     // Theoretically it will persist only for 1cc since when the NOPped ex register will flood EX stage then ex_memory_read=0 and load_bubble=0
     assign load_use_hzrd_bubble = ex_memory_read && ((ex_rd_addr == rs1_addr) && (ex_rd_addr != 5'd0) || (ex_rd_addr == rs2_addr) && (ex_rd_addr != 5'd0)); // Insert an 1cc bubble if current instruction in execute is LOAD and the next instruction is dependent.
@@ -258,12 +258,12 @@ module riscv_cpu (
         .fwd_to_rs2(fwd_to_rs2),
         .wb_rd_addr(wb_rd_addr), 
         .wb_reg_wr_en(wb_reg_wr_en), 
-        .mul_start(ex_mul_start),
+        .muldiv_start(ex_muldiv_start),
         .exec_result(exec_result),
         .zero(zero),
         .memory_wr_data(memory_wr_data),
-        .mul_busy(mul_busy),
-        .mul_to_reg(ex_mul_to_reg),
+        .muldiv_busy(muldiv_busy),
+        .muldiv_to_reg(ex_muldiv_to_reg),
         .csr_rd_data(fwd_csr_rd_data),
         .csr_rd_en(ex_csr_rd_en),
         .csr_rw(ex_csr_rw),
