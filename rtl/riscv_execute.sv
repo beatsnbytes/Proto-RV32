@@ -20,7 +20,7 @@ module riscv_execute (
     input logic [1:0] fwd_to_rs2,
     input logic [4:0] wb_rd_addr,
     input logic wb_reg_wr_en, 
-    input logic muldiv_start,
+    input logic is_muldiv_instr,
     // CSR-related
     input logic [31:0] csr_rd_data,
     input logic csr_rd_en, 
@@ -94,7 +94,7 @@ module riscv_execute (
     riscv_mul riscv_mul_inst(
         .clk(clk),
         .rst(rst),
-        .start(muldiv_start),
+        .is_muldiv_instr(is_muldiv_instr),
         .op_a(op_a),
         .op_b(op_b),
         .op(exec_op),

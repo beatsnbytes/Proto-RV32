@@ -5,7 +5,7 @@
 module riscv_mul(
     input logic clk,
     input logic rst,
-    input logic start,
+    input logic is_muldiv_instr,
     input logic [31:0] op_a,
     input logic [31:0] op_b,
     input logic [4:0] op,
@@ -39,7 +39,7 @@ module riscv_mul(
     // Next-state logic
     always_comb begin
         case(current_state)
-            IDLE: next_state = start ? COMPUTE : IDLE;
+            IDLE: next_state = is_muldiv_instr ? COMPUTE : IDLE;
             COMPUTE: next_state = (bit_idx==5'd31) ? DONE : COMPUTE;
             DONE: next_state = IDLE; 
             default: next_state = IDLE;
@@ -54,7 +54,7 @@ module riscv_mul(
             bit_idx <= 5'b0;
             running_total <= 64'b0;
         end else begin
-            if (start && current_state==IDLE) begin
+            if (is_muldiv_instr && current_state==IDLE) begin
                 op_a_latched <= op_a;
                 op_b_latched <= op_b;
                 op_latched <= op;
@@ -81,7 +81,7 @@ module riscv_mul(
             default:;
         endcase
 
-     busy = (current_state==IDLE && start) || (current_state==COMPUTE);
+     busy = (current_state==IDLE && is_muldiv_instr) || (current_state==COMPUTE);
     end
 
 endmodule
