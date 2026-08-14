@@ -62,11 +62,8 @@ module riscv_cpu (
     logic [31:0] mem_memory_wr_data;
 
     logic branch_shadow_ex_flush, muldiv_busy;
-    logic is_muldiv_instr;
     logic mul_done;
 
-    logic ex_is_muldiv_instr;
-    logic muldiv_to_reg, ex_muldiv_to_reg;
     logic real_start;
     logic load_use_hzrd_bubble;
 
@@ -137,8 +134,6 @@ module riscv_cpu (
         .memory_read(memory_read),
         .memory_write(memory_write),
         .memory_to_reg(memory_to_reg),
-        .is_muldiv_instr(is_muldiv_instr),
-        .muldiv_to_reg(muldiv_to_reg),
         .csr_wr_en(csr_wr_en), // To csr regfile directly
         .csr_rd_en(csr_rd_en), // To execute
         .csr_addr(csr_addr), // To csr regfile
@@ -165,8 +160,6 @@ module riscv_cpu (
             ex_csr_wr_en <= 1'b0;
             ex_csr_rw <= 1'b0;
             ex_csr_addr <= 2'b0;
-            ex_muldiv_to_reg <= 1'b0;
-            ex_is_muldiv_instr <= 1'b0;
             ex_pc <= 32'b0;
         end else if (mem_stall || muldiv_busy) begin
             // FREEZE - hold current values - no assignment needed here 
@@ -187,8 +180,6 @@ module riscv_cpu (
             ex_csr_wr_en <= 1'b0;
             ex_csr_rw <= 1'b0;
             ex_csr_addr <= 2'b0;
-            ex_is_muldiv_instr <= 1'b0;
-            ex_muldiv_to_reg <= 1'b0;
             ex_pc <= 32'b0;
         end else begin
             ex_rs1_addr <= rs1_addr;
@@ -208,8 +199,6 @@ module riscv_cpu (
             ex_csr_wr_en <= csr_wr_en;
             ex_csr_rw <= csr_rw;
             ex_csr_addr <= csr_addr[1:0];
-            ex_is_muldiv_instr <= is_muldiv_instr;
-            ex_muldiv_to_reg <= muldiv_to_reg;
         end
     end
 
@@ -256,12 +245,10 @@ module riscv_cpu (
         .fwd_to_rs2(fwd_to_rs2),
         .wb_rd_addr(wb_rd_addr), 
         .wb_reg_wr_en(wb_reg_wr_en), 
-        .is_muldiv_instr(ex_is_muldiv_instr),
         .exec_result(exec_result),
         .zero(zero),
         .memory_wr_data(memory_wr_data),
         .muldiv_busy(muldiv_busy),
-        .muldiv_to_reg(ex_muldiv_to_reg),
         .csr_rd_data(fwd_csr_rd_data),
         .csr_rd_en(ex_csr_rd_en),
         .csr_rw(ex_csr_rw),

@@ -20,7 +20,6 @@ module riscv_execute (
     input logic [1:0] fwd_to_rs2,
     input logic [4:0] wb_rd_addr,
     input logic wb_reg_wr_en, 
-    input logic is_muldiv_instr,
     // CSR-related
     input logic [31:0] csr_rd_data,
     input logic csr_rd_en, 
@@ -30,7 +29,6 @@ module riscv_execute (
     output logic zero,
     output logic [31:0] memory_wr_data,
     output logic muldiv_busy,
-    input logic muldiv_to_reg,
     output logic [31:0] csr_wr_data
 );
 
@@ -40,14 +38,21 @@ module riscv_execute (
     logic [31:0] op_a;
     logic [31:0] op_b;
     logic [31:0] rs2_fwd_data;
-    logic [31:0] mul_result;
     logic [31:0] alu_result;
-    logic [31:0] mul_result_latched;
     logic result_src; // Mux signal for selecting mul or alu result
 
     // MUL signals
-    logic signed_op_a, signed_op_b;
+    logic is_signed_op_a, is_signed_op_b;
     logic high_low_select;
+    logic mul_busy;
+    logic [31:0] mul_result;
+    // DIV signals
+    logic rem_div_select;
+    logic is_instr_signed;
+    logic div_busy;
+    logic is_muldiv_instr;
+    logic is_div_instr;
+    logic [31:0] div_result;    
 
     // MUX logic forwarding the correct value to the ALU
     always_comb begin
@@ -68,7 +73,6 @@ module riscv_execute (
         // MUX selecting between the immediate and the rs2_fwd_data in case of I-TYPE
         memory_wr_data = rs2_fwd_data; // Pass this value to the next stages unchanged. It will be used as the data value to the store instruction
         op_b = use_imm ? imm : rs2_fwd_data;
-
     end
 
 
@@ -95,9 +99,12 @@ module riscv_execute (
         .zero(zero) // 1-bit flag - High when result==0 - Used by branch insn
     );
 
+    assign is_muldiv_instr = exec_op[4];
+    assign muldiv_busy = mul_busy || div_busy;
+
     always_comb begin : derive_mul_control_signals
-        signed_op_a = exec_op[1];
-        signed_op_b = exec_op[0];
+        is_signed_op_a = exec_op[1];
+        is_signed_op_b = exec_op[0];
         high_low_select = exec_op[2];
     end
 
@@ -106,18 +113,36 @@ module riscv_execute (
         .rst(rst),
         .is_muldiv_instr(is_muldiv_instr),
         .op_a(op_a),
-        .signed_op_a(signed_op_a),
+        .is_signed_op_a(is_signed_op_a),
         .op_b(op_b),
-        .signed_op_b(signed_op_b),
+        .is_signed_op_b(is_signed_op_b),
         .high_low_select(high_low_select),
         .result(mul_result),
-        .busy(muldiv_busy)
+        .busy(mul_busy)
+    );
+
+    always_comb begin : derive_div_control_signals
+        rem_div_select = exec_op[1];
+        is_instr_signed = exec_op[0];
+        is_div_instr = exec_op[3];
+    end
+
+    riscv_div riscv_div_inst(
+        .clk(clk),
+        .rst(rst),
+        .is_muldiv_instr(is_muldiv_instr),
+        .dividend(op_a),
+        .divisor(op_b),
+        .rem_div_select(rem_div_select),
+        .is_instr_signed(is_instr_signed),
+        .result(div_result),
+        .busy(div_busy)
     );
 
     always_comb begin
         unique case(1'b1)
             csr_rd_en:  exec_result = csr_rd_data;
-            muldiv_to_reg: exec_result = mul_result;
+            is_muldiv_instr: exec_result = is_div_instr ? div_result : mul_result;
             default:    exec_result = alu_result; // Default case is when result_src==0 and the ALU result takes priority           
         endcase
     end

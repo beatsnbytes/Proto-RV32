@@ -89,15 +89,43 @@
 //x6==x7 → signedness bits not reaching the multiplier / not driving extension
 //x8/x11 wrong but x6/x7 fine → MULHSU mixed-case specifically broken (the asymmetric path — most likely place for a residual bug)
 
-FFF00093   # ADDI x1,x0,-1    -> x1 = 0xFFFFFFFF (-1)
-00300113   # ADDI x2,x0,3     -> x2 = 0x00000003 (3)
-FFC00193   # ADDI x3,x0,-4    -> x3 = 0xFFFFFFFC (-4)
-//80000237   # LUI  x4,0x80000  -> x4 = 0x80000000 (INT_MIN)
-022082B3   # MUL    x5,x1,x2  -> x5 = 0xFFFFFFFD  (-1*3=-3, low word)
-02209333   # MULH   x6,x1,x2  -> x6 = 0xFFFFFFFF  (signed hi of -3)
-0220B3B3   # MULHU  x7,x1,x2  -> x7 = 0x00000002  (unsigned hi; differs from x6)
-0220A433   # MULHSU x8,x1,x2  -> x8 = 0xFFFFFFFF  (-1 signed * 3 unsigned, hi)
-023094B3   # MULH   x9,x1,x3  -> x9 = 0x00000000  (-1*-4=+4, hi=0)
-0230B533   # MULHU  x10,x1,x3 -> x10= 0xFFFFFFFB  (unsigned hi; differs from x9)
-0211A5B3   # MULHSU x11,x3,x1 -> x11= 0xFFFFFFFC  (-4 signed * 0xFFFFFFFF unsigned, hi)
+//FFF00093   # ADDI x1,x0,-1    -> x1 = 0xFFFFFFFF (-1)
+//00300113   # ADDI x2,x0,3     -> x2 = 0x00000003 (3)
+//FFC00193   # ADDI x3,x0,-4    -> x3 = 0xFFFFFFFC (-4)
+////80000237   # LUI  x4,0x80000  -> x4 = 0x80000000 (INT_MIN)
+//022082B3   # MUL    x5,x1,x2  -> x5 = 0xFFFFFFFD  (-1*3=-3, low word)
+//02209333   # MULH   x6,x1,x2  -> x6 = 0xFFFFFFFF  (signed hi of -3)
+//0220B3B3   # MULHU  x7,x1,x2  -> x7 = 0x00000002  (unsigned hi; differs from x6)
+//0220A433   # MULHSU x8,x1,x2  -> x8 = 0xFFFFFFFF  (-1 signed * 3 unsigned, hi)
+//023094B3   # MULH   x9,x1,x3  -> x9 = 0x00000000  (-1*-4=+4, hi=0)
+//0230B533   # MULHU  x10,x1,x3 -> x10= 0xFFFFFFFB  (unsigned hi; differs from x9)
+//0211A5B3   # MULHSU x11,x3,x1 -> x11= 0xFFFFFFFC  (-4 signed * 0xFFFFFFFF unsigned, hi)
+
+// TEST G - Concurrentmul stall in ex and memory instruction stall in mem
+//06000093   # ADDI x1,x0,0x60
+//00300113   # ADDI x2,x0,3
+//00800593   # ADDI x11,x0,8
+//00500613   # ADDI x12,x0,5
+//0020A023   # SW   x2,0(x1)     store → mem_stall while draining in MEM
+//02C586B3   # MUL  x13,x11,x12  x13 = 8*5 = 40  ← mul enters EX while store stalls
+//0000A703   # LW   x14,0(x1)    x14 = 3  (reads back the store)
+//00E687B3   # ADD  x15,x13,x14  x15 = 40+3 = 43
+
+// TEST H - Unsigned-only test (DIVU/REMU)
+01400093   # ADDI x1,x0,20
+00600113   # ADDI x2,x0,6
+0220D1B3   # DIVU x3,x1,x2    x3 = 20/6 = 3
+0220F233   # REMU x4,x1,x2    x4 = 20%6 = 2
+06400293   # ADDI x5,x0,100
+00700313   # ADDI x6,x0,7
+0262D3B3   # DIVU x7,x5,x6    x7 = 100/7 = 14
+0262F433   # REMU x8,x5,x6    x8 = 100%7 = 2
+02A00493   # ADDI x9,x0,42
+00500513   # ADDI x10,x0,5
+02A4D5B3   # DIVU x11,x9,x10  x11 = 42/5 = 8
+02A4F633   # REMU x12,x9,x10  x12 = 42%5 = 2
+02A0D6B3   # DIVU x13,x1,x10  x13 = 20/5 = 4  (exact, rem 0)
+02A0F733   # REMU x14,x1,x10  x14 = 20%5 = 0
+029557B3   # DIVU x15,x10,x9  x15 = 5/42 = 0  (divisor > dividend)
+02957833   # REMU x16,x10,x9  x16 = 5%42 = 5
 
