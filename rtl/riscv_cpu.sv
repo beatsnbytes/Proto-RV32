@@ -61,8 +61,8 @@ module riscv_cpu (
     logic mem_memory_write; 
     logic [31:0] mem_memory_wr_data;
 
-    logic branch_shadow_ex_flush, muldiv_stall;
-    logic is_muldiv_instr, muldiv_busy;
+    logic branch_shadow_ex_flush, muldiv_busy;
+    logic is_muldiv_instr;
     logic mul_done;
 
     logic ex_is_muldiv_instr;
@@ -113,7 +113,7 @@ module riscv_cpu (
             pc <= 32'd0;
         end else if (branch_taken) begin
             pc <= ex_pc + ex_imm;
-        end else if ( muldiv_stall || load_use_hzrd_bubble || mem_stall) begin 
+        end else if ( muldiv_busy || load_use_hzrd_bubble || mem_stall) begin 
             // FREEZE - hold current value - no assignment needed
         end else begin
             pc <= pc + 32'd4;
@@ -168,7 +168,7 @@ module riscv_cpu (
             ex_muldiv_to_reg <= 1'b0;
             ex_is_muldiv_instr <= 1'b0;
             ex_pc <= 32'b0;
-        end else if (mem_stall || muldiv_stall) begin
+        end else if (mem_stall || muldiv_busy) begin
             // FREEZE - hold current values - no assignment needed here 
         end else if (load_use_hzrd_bubble) begin // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
             ex_rs1_addr <= 5'b0;
@@ -216,8 +216,6 @@ module riscv_cpu (
     // Combinational logic for the source of the pc. Either from branch instr or simple pc+4 -- 0  goes to pc+4 -- 1 source is from branch
     // func3 = 3'b000 is BEQ and func3 = 3'b001 is BNE
     assign branch_taken = ex_branch_instr && ((ex_func3 == 3'b000 && zero) || (ex_func3 == 3'b001 && !zero));
-
-    assign muldiv_stall = muldiv_busy;
 
     // Theoretically it will persist only for 1cc since when the NOPped ex register will flood EX stage then ex_memory_read=0 and load_bubble=0
     assign load_use_hzrd_bubble = ex_memory_read && ((ex_rd_addr == rs1_addr) && (ex_rd_addr != 5'd0) || (ex_rd_addr == rs2_addr) && (ex_rd_addr != 5'd0)); // Insert an 1cc bubble if current instruction in execute is LOAD and the next instruction is dependent.
@@ -286,6 +284,17 @@ module riscv_cpu (
             mem_pc <= 32'b0;
         end else if (mem_stall) begin
             // FREEZE - hold current values - no assignment needed here
+        end else if (muldiv_busy) begin
+            mem_exec_result <= 32'b0;
+            mem_memory_to_reg <= 1'b0;  
+            mem_rd_addr <= 5'b0;
+            mem_reg_wr_en <= 1'b0; 
+            mem_csr_wr_data <= 32'b0;
+            mem_csr_wr_en <= 1'b0;
+            mem_csr_addr <= 2'b0;  
+            mem_memory_write <= '0; 
+            mem_memory_wr_data <= '0;
+            mem_pc <= 32'b0;
         end else begin
             mem_exec_result <= exec_result;
             mem_memory_to_reg <= ex_memory_to_reg;

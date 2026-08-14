@@ -27,7 +27,7 @@ module riscv_soc_tb;
         rst = 1'b0;
 
         // Wait enough cycles to see the output of the alu
-        repeat(200) @(posedge clk); #1;
+        repeat(1000) @(posedge clk); #1;
 
         $finish;
     end

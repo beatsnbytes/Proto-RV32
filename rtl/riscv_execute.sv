@@ -45,6 +45,10 @@ module riscv_execute (
     logic [31:0] mul_result_latched;
     logic result_src; // Mux signal for selecting mul or alu result
 
+    // MUL signals
+    logic signed_op_a, signed_op_b;
+    logic high_low_select;
+
     // MUX logic forwarding the correct value to the ALU
     always_comb begin
         case(fwd_to_rs1)
@@ -91,13 +95,21 @@ module riscv_execute (
         .zero(zero) // 1-bit flag - High when result==0 - Used by branch insn
     );
 
+    always_comb begin : derive_mul_control_signals
+        signed_op_a = exec_op[1];
+        signed_op_b = exec_op[0];
+        high_low_select = exec_op[2];
+    end
+
     riscv_mul riscv_mul_inst(
         .clk(clk),
         .rst(rst),
         .is_muldiv_instr(is_muldiv_instr),
         .op_a(op_a),
+        .signed_op_a(signed_op_a),
         .op_b(op_b),
-        .op(exec_op),
+        .signed_op_b(signed_op_b),
+        .high_low_select(high_low_select),
         .result(mul_result),
         .busy(muldiv_busy)
     );
