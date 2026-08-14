@@ -11,7 +11,7 @@ module riscv_execute (
     input logic [4:0] rd_addr,
     input logic reg_wr_en,
     input logic use_imm,
-    input logic [3:0] exec_op,
+    input logic [4:0] exec_op,
     input logic [31:0] imm,
     input logic [31:0] mem_fwd_data,
     input logic [31:0] wb_fwd_data,
@@ -20,7 +20,7 @@ module riscv_execute (
     input logic [1:0] fwd_to_rs2,
     input logic [4:0] wb_rd_addr,
     input logic wb_reg_wr_en, 
-    input logic mul_start,
+    input logic is_muldiv_instr,
     // CSR-related
     input logic [31:0] csr_rd_data,
     input logic csr_rd_en, 
@@ -29,8 +29,8 @@ module riscv_execute (
     output logic [31:0] exec_result,
     output logic zero,
     output logic [31:0] memory_wr_data,
-    output logic mul_busy,
-    input logic mul_to_reg,
+    output logic muldiv_busy,
+    input logic muldiv_to_reg,
     output logic [31:0] csr_wr_data
 );
 
@@ -44,6 +44,10 @@ module riscv_execute (
     logic [31:0] alu_result;
     logic [31:0] mul_result_latched;
     logic result_src; // Mux signal for selecting mul or alu result
+
+    // MUL signals
+    logic signed_op_a, signed_op_b;
+    logic high_low_select;
 
     // MUX logic forwarding the correct value to the ALU
     always_comb begin
@@ -91,21 +95,29 @@ module riscv_execute (
         .zero(zero) // 1-bit flag - High when result==0 - Used by branch insn
     );
 
+    always_comb begin : derive_mul_control_signals
+        signed_op_a = exec_op[1];
+        signed_op_b = exec_op[0];
+        high_low_select = exec_op[2];
+    end
+
     riscv_mul riscv_mul_inst(
         .clk(clk),
         .rst(rst),
-        .start(mul_start),
+        .is_muldiv_instr(is_muldiv_instr),
         .op_a(op_a),
+        .signed_op_a(signed_op_a),
         .op_b(op_b),
-        .op(exec_op),
+        .signed_op_b(signed_op_b),
+        .high_low_select(high_low_select),
         .result(mul_result),
-        .busy(mul_busy)
+        .busy(muldiv_busy)
     );
 
     always_comb begin
         unique case(1'b1)
             csr_rd_en:  exec_result = csr_rd_data;
-            mul_to_reg: exec_result = mul_result;
+            muldiv_to_reg: exec_result = mul_result;
             default:    exec_result = alu_result; // Default case is when result_src==0 and the ALU result takes priority           
         endcase
     end

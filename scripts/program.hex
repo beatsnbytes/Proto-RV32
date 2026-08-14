@@ -75,12 +75,29 @@
 //14D00613  # ADDI x12,x0,333
 
 // TEST E — Backward branch / loop (3-iteration countdown):
-00300093  # ADDI x1,x0,3     counter
-00000113  # ADDI x2,x0,0     accumulator
-00A10113  # ADDI x2,x2,10   LOOP: x2+=10
-FFF08093  # ADDI x1,x1,-1    x1-=1
-FE009CE3  # BNE x1,x0,-8     if x1≠0 → back to 0x08
-3E700593  # ADDI x11,x0,999  exit
+//00300093  # ADDI x1,x0,3     counter
+//00000113  # ADDI x2,x0,0     accumulator
+//00A10113  # ADDI x2,x2,10   LOOP: x2+=10
+//FFF08093  # ADDI x1,x1,-1    x1-=1
+//FE009CE3  # BNE x1,x0,-8     if x1≠0 → back to 0x08
+//3E700593  # ADDI x11,x0,999  exit
 
+// TEST F - Excerscise different MUL flavours
+//How to read failures:
+//x5 wrong → basic multiply broken (unlikely, testbench passed)
+//x6/x9 wrong but MUL fine → signed extension of operands broken
+//x6==x7 → signedness bits not reaching the multiplier / not driving extension
+//x8/x11 wrong but x6/x7 fine → MULHSU mixed-case specifically broken (the asymmetric path — most likely place for a residual bug)
 
+FFF00093   # ADDI x1,x0,-1    -> x1 = 0xFFFFFFFF (-1)
+00300113   # ADDI x2,x0,3     -> x2 = 0x00000003 (3)
+FFC00193   # ADDI x3,x0,-4    -> x3 = 0xFFFFFFFC (-4)
+//80000237   # LUI  x4,0x80000  -> x4 = 0x80000000 (INT_MIN)
+022082B3   # MUL    x5,x1,x2  -> x5 = 0xFFFFFFFD  (-1*3=-3, low word)
+02209333   # MULH   x6,x1,x2  -> x6 = 0xFFFFFFFF  (signed hi of -3)
+0220B3B3   # MULHU  x7,x1,x2  -> x7 = 0x00000002  (unsigned hi; differs from x6)
+0220A433   # MULHSU x8,x1,x2  -> x8 = 0xFFFFFFFF  (-1 signed * 3 unsigned, hi)
+023094B3   # MULH   x9,x1,x3  -> x9 = 0x00000000  (-1*-4=+4, hi=0)
+0230B533   # MULHU  x10,x1,x3 -> x10= 0xFFFFFFFB  (unsigned hi; differs from x9)
+0211A5B3   # MULHSU x11,x3,x1 -> x11= 0xFFFFFFFC  (-4 signed * 0xFFFFFFFF unsigned, hi)
 

@@ -5,19 +5,21 @@
 module riscv_mul(
     input logic clk,
     input logic rst,
-    input logic start,
+    input logic is_muldiv_instr,
     input logic [31:0] op_a,
+    input logic signed_op_a,
     input logic [31:0] op_b,
-    input logic [3:0] op,
+    input logic signed_op_b,
+    input logic high_low_select,
     output logic [31:0] result,
     output logic busy
 );
 
 
-    logic [4:0] bit_idx; // To index 32 bit positions
-    logic [31:0] op_a_latched, op_b_latched;
-    logic [3:0] op_latched;
-    logic [63:0] running_total;
+    logic [5:0] bit_idx; // To index 64 bit positions
+    logic [63:0] op_a_latched, op_b_latched;
+    logic signed_op_a_latched, signed_op_b_latched, high_low_select_latched;
+    logic [127:0] running_total;
 
     typedef enum logic[1:0] {
         IDLE = 2'b00,
@@ -39,8 +41,8 @@ module riscv_mul(
     // Next-state logic
     always_comb begin
         case(current_state)
-            IDLE: next_state = start ? COMPUTE : IDLE;
-            COMPUTE: next_state = (bit_idx==5'd31) ? DONE : COMPUTE;
+            IDLE: next_state = is_muldiv_instr ? COMPUTE : IDLE;
+            COMPUTE: next_state = (bit_idx==6'd63) ? DONE : COMPUTE;
             DONE: next_state = IDLE; 
             default: next_state = IDLE;
         endcase
@@ -48,40 +50,31 @@ module riscv_mul(
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            op_a_latched <= 32'b0;
-            op_b_latched <= 32'b0;
-            op_latched <= 4'b0;
-            bit_idx <= 5'b0;
-            running_total <= 64'b0;
+            op_a_latched <= 64'b0;
+            op_b_latched <= 64'b0;
+            signed_op_a_latched <= 1'b0;
+            signed_op_b_latched <= 1'b0;
+            high_low_select_latched <= 1'b0;
+            bit_idx <= 6'b0;
+            running_total <= 128'b0;
         end else begin
-            if (start && current_state==IDLE) begin
-                op_a_latched <= op_a;
-                op_b_latched <= op_b;
-                op_latched <= op;
-                bit_idx <= 5'b0;
-                running_total <= 64'b0;
+            if (is_muldiv_instr && current_state==IDLE) begin
+                op_a_latched <= signed_op_a ? {{32{op_a[31]}}, op_a} : {{32{1'b0}}, op_a}; // Sign extend if its signed (i.e op[1]==1) otherwise zero extend
+                signed_op_a_latched <= signed_op_a; // Need to latch the signedness for applying Baugh-Wooley correction after
+                op_b_latched <= signed_op_b ? {{32{op_b[31]}}, op_a} : {{32{1'b0}}, op_b};
+                signed_op_b_latched <= signed_op_b;
+                high_low_select_latched <= high_low_select;
+                bit_idx <= 6'b0;
+                running_total <= 128'b0;
             end else if (current_state==COMPUTE) begin
                 bit_idx <= bit_idx + 1;
-                running_total <= op_b_latched[bit_idx] ? (running_total + (64'(op_a_latched) << bit_idx)) : running_total;
+                running_total <= op_b_latched[bit_idx] ? (running_total + (128'(op_a_latched) << bit_idx)) : running_total;
             end
         end
     end
 
-    // Output logic
-    always_comb begin
-        result = 32'b0;
-        case(current_state)
-            DONE: begin
-                case (op_latched)
-                    4'b1010: result = running_total[31:0];
-                    4'b1011: result = running_total[63:32];
-                    default: result = 32'b0;
-                endcase
-            end
-            default:;
-        endcase
+    assign busy = (current_state==IDLE && is_muldiv_instr) || (current_state==COMPUTE);
+    assign result = (current_state==DONE) ? (high_low_select ? running_total[63:32] : running_total[31:0]) : 32'b0;
 
-     busy = (current_state==IDLE && start) || (current_state==COMPUTE);
-    end
 
 endmodule
