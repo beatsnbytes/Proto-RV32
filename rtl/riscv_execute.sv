@@ -9,6 +9,7 @@ module riscv_execute (
     input logic [4:0] rs1_addr,
     input logic [4:0] rs2_addr,
     input logic [4:0] rd_addr,
+    input logic [31:0] pc,
     input logic reg_wr_en,
     input logic use_imm,
     input logic [4:0] exec_op,
@@ -38,6 +39,8 @@ module riscv_execute (
     logic [31:0] op_a;
     logic [31:0] op_b;
     logic [31:0] rs2_fwd_data;
+    logic [31:0] rs1_fwd_data;
+    logic use_pc;
     logic [31:0] alu_result;
     logic result_src; // Mux signal for selecting mul or alu result
 
@@ -57,12 +60,20 @@ module riscv_execute (
 
     // MUX logic forwarding the correct value to the ALU
     always_comb begin
+        // case(fwd_to_rs1)
+        //     2'b00: op_a = rs1_data;
+        //     2'b10: op_a = mem_fwd_data;
+        //     2'b11: op_a = wb_fwd_data;
+        //     default: op_a = rs1_data; // Defaulting to rs1 data for the invalid value of 10
+        // endcase
         case(fwd_to_rs1)
-            2'b00: op_a = rs1_data;
-            2'b10: op_a = mem_fwd_data;
-            2'b11: op_a = wb_fwd_data;
-            default: op_a = rs1_data; // Defaulting to rs1 data for the invalid value of 10
+            2'b00: rs1_fwd_data = rs1_data;
+            2'b10: rs1_fwd_data = mem_fwd_data;
+            2'b11: rs1_fwd_data = wb_fwd_data;
+            default: rs1_fwd_data = rs1_data; // Defaulting to rs1 data for the invalid value of 10
         endcase
+        use_pc = (exec_op == 5'b01100); // Use the PC as op_a when AUIPC
+        op_a = use_pc ? pc : rs1_fwd_data;
 
         case(fwd_to_rs2)
             2'b00: rs2_fwd_data = rs2_data;
@@ -107,7 +118,8 @@ module riscv_execute (
         is_signed_op_a = exec_op[1];
         is_signed_op_b = exec_op[0];
         high_low_select = exec_op[2];
-        is_mul_instr = is_muldiv_instr && !is_div_instr;
+        // is_mul_instr = is_muldiv_instr && !is_div_instr;
+        is_mul_instr = (exec_op[4:3]==2'b10);
     end
 
     riscv_mul riscv_mul_inst(
@@ -126,7 +138,8 @@ module riscv_execute (
     always_comb begin : derive_div_control_signals
         rem_div_select = exec_op[1];
         is_signed_instr = exec_op[0];
-        is_div_instr = exec_op[3];
+        // is_div_instr = is_muldiv_instr && exec_op[3];
+        is_div_instr = (exec_op[4:3]==2'b11);
     end
 
     riscv_div riscv_div_inst(

@@ -258,7 +258,15 @@ module riscv_fetch_decode (
             7'b1100011 : begin
                 imm = { {20{instr[31]}}, instr[7], instr[30:25], instr[11:8], 1'b0};
                 branch_instr = 1'b1;
-                exec_op = 5'b00010; // SUB  rs1 - rs2, check zero flag
+                case(func3)
+                    3'b000: exec_op = 5'b00010; // BEQ (SUB)
+                    3'b001: exec_op = 5'b00010; // BNE (SUB)
+                    3'b100: exec_op = 5'b00100; // BLT (SLT)
+                    3'b101: exec_op = 5'b00100; // BGE (SLT)
+                    3'b110: exec_op = 5'b00101; // BLTU (SLTU)
+                    3'b111: exec_op = 5'b00101; // BGEU (SLTU)
+                    default: exec_op = 5'b00000; // NOP
+                endcase
             end
             // -- LW
             7'b0000011 : begin
@@ -284,6 +292,18 @@ module riscv_fetch_decode (
                 csr_rd_en = 1'b1;
                 csr_addr = instr[31:20];
                 reg_wr_en = 1'b1;
+            end
+            7'b0110111: begin // LUI
+                imm = {{12{instr[31]}}, instr[31:12]};
+                use_imm = 1'b1;
+                reg_wr_en = 1'b1;
+                exec_op = 5'b01011;
+            end
+            7'b0010111 : begin // AUIPC
+                imm = {{12{instr[31]}}, instr[31:12]};
+                use_imm = 1'b1;
+                reg_wr_en = 1'b1;
+                exec_op = 5'b01100;
             end
             default : ; // All signals already set by the top level default
         endcase

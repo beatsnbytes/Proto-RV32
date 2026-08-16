@@ -67,6 +67,9 @@ module riscv_cpu (
     logic real_start;
     logic load_use_hzrd_bubble;
 
+    // Branch related
+    logic condition_needs_zero, condition_not_needs_zero;
+
     // CSR related
     logic [31:0] csr_wr_data;
     logic [31:0] csr_rd_data;
@@ -202,9 +205,11 @@ module riscv_cpu (
         end
     end
 
-    // Combinational logic for the source of the pc. Either from branch instr or simple pc+4 -- 0  goes to pc+4 -- 1 source is from branch
-    // func3 = 3'b000 is BEQ and func3 = 3'b001 is BNE
-    assign branch_taken = ex_branch_instr && ((ex_func3 == 3'b000 && zero) || (ex_func3 == 3'b001 && !zero));
+    always_comb begin: branch_taken_logic
+        condition_needs_zero = ((ex_func3==3'b000) || (ex_func3==3'b101) || (ex_func3==3'b111));
+        condition_not_needs_zero = ((ex_func3==3'b001) || (ex_func3==3'b100) || (ex_func3==3'b110));
+        branch_taken = ex_branch_instr && ((condition_needs_zero && zero) || (condition_not_needs_zero && !zero));
+    end
 
     // Theoretically it will persist only for 1cc since when the NOPped ex register will flood EX stage then ex_memory_read=0 and load_bubble=0
     assign load_use_hzrd_bubble = ex_memory_read && ((ex_rd_addr == rs1_addr) && (ex_rd_addr != 5'd0) || (ex_rd_addr == rs2_addr) && (ex_rd_addr != 5'd0)); // Insert an 1cc bubble if current instruction in execute is LOAD and the next instruction is dependent.
@@ -234,6 +239,7 @@ module riscv_cpu (
         .rs1_addr(ex_rs1_addr),
         .rs2_addr(ex_rs2_addr),
         .rd_addr(ex_rd_addr),
+        .pc(ex_pc),
         .reg_wr_en(ex_reg_wr_en), // probably not used, prune it
         .use_imm(ex_use_imm),
         .exec_op(ex_exec_op),
