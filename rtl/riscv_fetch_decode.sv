@@ -143,8 +143,6 @@ module riscv_fetch_decode (
     output logic memory_read, 
     output logic memory_write,
     output logic memory_to_reg, // Writeback mux 0 = ALU_RESULT, 1 = memory data
-    output logic is_muldiv_instr,
-    output logic muldiv_to_reg,
     // Output signals for the CSR file
     output logic csr_wr_en, 
     output logic csr_rd_en, 
@@ -184,8 +182,6 @@ module riscv_fetch_decode (
         memory_read = 1'b0;
         memory_write = 1'b0;
         memory_to_reg = 1'b0;
-        // Default signals for multiplier
-        muldiv_to_reg = 1'b0;
         // Default signals for CSR
         csr_rd_en  = 1'b0;
         csr_wr_en = 1'b0;
@@ -211,7 +207,6 @@ module riscv_fetch_decode (
                     end
                     7'b0000001: begin 
                         // ---- M-extension MUL & DIV family (opcode 0110011, funct7=0000001) ----
-                        muldiv_to_reg = 1'b1;
                         reg_wr_en = 1'b1;
                         case(func3)
                             3'b000: exec_op = 5'b10000; // MUL
@@ -294,10 +289,10 @@ module riscv_fetch_decode (
         endcase
     end
 
-    always_comb begin : control_signals_from_exec_op
-    //TODO add more signals here that are derived from exec_op
-        is_muldiv_instr = exec_op[4];
-    end
+    // always_comb begin : control_signals_from_exec_op
+    // //TODO add more signals here that are derived from exec_op
+    //     is_muldiv_instr = exec_op[4];
+    // end
 
 endmodule
     
