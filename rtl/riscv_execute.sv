@@ -48,9 +48,10 @@ module riscv_execute (
     logic [31:0] mul_result;
     // DIV signals
     logic rem_div_select;
-    logic is_instr_signed;
+    logic is_signed_instr;
     logic div_busy;
     logic is_muldiv_instr;
+    logic is_mul_instr;
     logic is_div_instr;
     logic [31:0] div_result;    
 
@@ -106,12 +107,13 @@ module riscv_execute (
         is_signed_op_a = exec_op[1];
         is_signed_op_b = exec_op[0];
         high_low_select = exec_op[2];
+        is_mul_instr = is_muldiv_instr && !is_div_instr;
     end
 
     riscv_mul riscv_mul_inst(
         .clk(clk),
         .rst(rst),
-        .is_muldiv_instr(is_muldiv_instr),
+        .is_mul_instr(is_mul_instr),
         .op_a(op_a),
         .is_signed_op_a(is_signed_op_a),
         .op_b(op_b),
@@ -123,18 +125,18 @@ module riscv_execute (
 
     always_comb begin : derive_div_control_signals
         rem_div_select = exec_op[1];
-        is_instr_signed = exec_op[0];
+        is_signed_instr = exec_op[0];
         is_div_instr = exec_op[3];
     end
 
     riscv_div riscv_div_inst(
         .clk(clk),
         .rst(rst),
-        .is_muldiv_instr(is_muldiv_instr),
+        .is_div_instr(is_div_instr),
         .dividend(op_a),
         .divisor(op_b),
         .rem_div_select(rem_div_select),
-        .is_instr_signed(is_instr_signed),
+        .is_signed_instr(is_signed_instr),
         .result(div_result),
         .busy(div_busy)
     );

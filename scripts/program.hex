@@ -112,20 +112,56 @@
 //00E687B3   # ADD  x15,x13,x14  x15 = 40+3 = 43
 
 // TEST H - Unsigned-only test (DIVU/REMU)
+//01400093   #0 ADDI x1,x0,20
+//00600113   #4 ADDI x2,x0,6
+//0220D1B3   #8 DIVU x3,x1,x2    x3 = 20/6 = 3
+//0220F233   #C REMU x4,x1,x2    x4 = 20%6 = 2
+//06400293   #10 ADDI x5,x0,100
+//00700313   #14 ADDI x6,x0,7
+//0262D3B3   #18 DIVU x7,x5,x6    x7 = 100/7 = 14
+//0262F433   #1C REMU x8,x5,x6    x8 = 100%7 = 2
+//02A00493   #20 ADDI x9,x0,42
+//00500513   #24 ADDI x10,x0,5
+//02A4D5B3   #28 DIVU x11,x9,x10  x11 = 42/5 = 8
+//02A4F633   #2C REMU x12,x9,x10  x12 = 42%5 = 2
+//02A0D6B3   #30 DIVU x13,x1,x10  x13 = 20/5 = 4  (exact, rem 0)
+//02A0F733   #34 REMU x14,x1,x10  x14 = 20%5 = 0
+//029557B3   #38 DIVU x15,x10,x9  x15 = 5/42 = 0  (divisor > dividend)
+//02957833   #3C REMU x16,x10,x9  x16 = 5%42 = 5
+
+// TEST I - Edge case DIV/REM test
+//00A00093   #0 ADDI x1,x0,10
+//00000113   #4 ADDI x2,x0,0        zero divisor
+//FF900193   #8 ADDI x3,x0,-7       negative dividend
+//00100213   #c ADDI x4,x0,1
+//01F21213   #10 SLLI x4,x4,31       x4 = 0x80000000 (INT_MIN)
+//FFF00293   #14 ADDI x5,x0,-1       0xFFFFFFFF
+//0220C533   #18 DIV  x10,x1,x2      10/0 signed
+//0220D5B3   #1c DIVU x11,x1,x2      10/0 unsigned
+//0220E633   #20 REM  x12,x1,x2      10%0
+//0220F6B3   #24 REMU x13,x1,x2      10%0
+//0221E733   #28 REM  x14,x3,x2      -7%0
+//025247B3   #2c DIV  x15,x4,x5      INT_MIN/-1
+//02526833   #30 REM  x16,x4,x5      INT_MIN%-1
+//025258B3   #34 DIVU x17,x4,x5      same bits, unsigned
+//02527933   #38 REMU x18,x4,x5      same bits, unsigned
+
+//TEST J - Full signed/unsigned DIV/REM functional test — exercises all four sign combinations plus the sign conventions
 01400093   # ADDI x1,x0,20
 00600113   # ADDI x2,x0,6
-0220D1B3   # DIVU x3,x1,x2    x3 = 20/6 = 3
-0220F233   # REMU x4,x1,x2    x4 = 20%6 = 2
-06400293   # ADDI x5,x0,100
-00700313   # ADDI x6,x0,7
-0262D3B3   # DIVU x7,x5,x6    x7 = 100/7 = 14
-0262F433   # REMU x8,x5,x6    x8 = 100%7 = 2
-02A00493   # ADDI x9,x0,42
-00500513   # ADDI x10,x0,5
-02A4D5B3   # DIVU x11,x9,x10  x11 = 42/5 = 8
-02A4F633   # REMU x12,x9,x10  x12 = 42%5 = 2
-02A0D6B3   # DIVU x13,x1,x10  x13 = 20/5 = 4  (exact, rem 0)
-02A0F733   # REMU x14,x1,x10  x14 = 20%5 = 0
-029557B3   # DIVU x15,x10,x9  x15 = 5/42 = 0  (divisor > dividend)
-02957833   # REMU x16,x10,x9  x16 = 5%42 = 5
-
+FEC00193   # ADDI x3,x0,-20
+FFA00213   # ADDI x4,x0,-6
+FF900293   # ADDI x5,x0,-7
+00300313   # ADDI x6,x0,3
+0220C533   # DIV  x10,x1,x2    20/6
+0220E5B3   # REM  x11,x1,x2    20%6
+0221C633   # DIV  x12,x3,x2    -20/6
+0221E6B3   # REM  x13,x3,x2    -20%6
+0240C733   # DIV  x14,x1,x4    20/-6
+0240E7B3   # REM  x15,x1,x4    20%-6
+0241C833   # DIV  x16,x3,x4    -20/-6
+0241E8B3   # REM  x17,x3,x4    -20%-6
+0262C933   # DIV  x18,x5,x6    -7/3
+0262E9B3   # REM  x19,x5,x6    -7%3
+0221DA33   # DIVU x20,x3,x2    (0xFFFFFFEC)/6
+0221FAB3   # REMU x21,x3,x2    (0xFFFFFFEC)%6

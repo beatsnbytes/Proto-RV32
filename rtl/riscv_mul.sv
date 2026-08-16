@@ -5,7 +5,7 @@
 module riscv_mul(
     input logic clk,
     input logic rst,
-    input logic is_muldiv_instr,
+    input logic is_mul_instr,
     input logic [31:0] op_a,
     input logic is_signed_op_a,
     input logic [31:0] op_b,
@@ -42,7 +42,7 @@ module riscv_mul(
     // Next-state logic
     always_comb begin
         case(current_state)
-            IDLE: next_state = is_muldiv_instr ? COMPUTE : IDLE;
+            IDLE: next_state = is_mul_instr ? COMPUTE : IDLE;
             COMPUTE: next_state = iters_done ? DONE : COMPUTE;
             DONE: next_state = IDLE; 
             default: next_state = IDLE;
@@ -59,7 +59,7 @@ module riscv_mul(
             bit_idx <= 6'b0;
             running_total <= 128'b0;
         end else begin
-            if (is_muldiv_instr && current_state==IDLE) begin
+            if (is_mul_instr && current_state==IDLE) begin
                 op_a_latched <= is_signed_op_a ? {{32{op_a[31]}}, op_a} : {{32{1'b0}}, op_a}; // Sign extend if its signed (i.e op[1]==1) otherwise zero extend
                 is_signed_op_a_latched <= is_signed_op_a; // Need to latch the signedness for applying Baugh-Wooley correction after
                 op_b_latched <= is_signed_op_b ? {{32{op_b[31]}}, op_a} : {{32{1'b0}}, op_b};
@@ -74,7 +74,7 @@ module riscv_mul(
         end
     end
 
-    assign busy = (current_state==IDLE && is_muldiv_instr) || (current_state==COMPUTE);
+    assign busy = (current_state==IDLE && is_mul_instr) || (current_state==COMPUTE);
     assign iters_done = (bit_idx==6'd63);
     assign result = (current_state==DONE) ? (high_low_select ? running_total[63:32] : running_total[31:0]) : 32'b0;
 
