@@ -147,21 +147,65 @@
 //02527933   #38 REMU x18,x4,x5      same bits, unsigned
 
 //TEST J - Full signed/unsigned DIV/REM functional test — exercises all four sign combinations plus the sign conventions
-01400093   # ADDI x1,x0,20
-00600113   # ADDI x2,x0,6
-FEC00193   # ADDI x3,x0,-20
-FFA00213   # ADDI x4,x0,-6
-FF900293   # ADDI x5,x0,-7
-00300313   # ADDI x6,x0,3
-0220C533   # DIV  x10,x1,x2    20/6
-0220E5B3   # REM  x11,x1,x2    20%6
-0221C633   # DIV  x12,x3,x2    -20/6
-0221E6B3   # REM  x13,x3,x2    -20%6
-0240C733   # DIV  x14,x1,x4    20/-6
-0240E7B3   # REM  x15,x1,x4    20%-6
-0241C833   # DIV  x16,x3,x4    -20/-6
-0241E8B3   # REM  x17,x3,x4    -20%-6
-0262C933   # DIV  x18,x5,x6    -7/3
-0262E9B3   # REM  x19,x5,x6    -7%3
-0221DA33   # DIVU x20,x3,x2    (0xFFFFFFEC)/6
-0221FAB3   # REMU x21,x3,x2    (0xFFFFFFEC)%6
+//01400093   # ADDI x1,x0,20
+//00600113   # ADDI x2,x0,6
+//FEC00193   # ADDI x3,x0,-20
+//FFA00213   # ADDI x4,x0,-6
+//FF900293   # ADDI x5,x0,-7
+//00300313   # ADDI x6,x0,3
+//0220C533   # DIV  x10,x1,x2    20/6
+//0220E5B3   # REM  x11,x1,x2    20%6
+//0221C633   # DIV  x12,x3,x2    -20/6
+//0221E6B3   # REM  x13,x3,x2    -20%6
+//0240C733   # DIV  x14,x1,x4    20/-6
+//0240E7B3   # REM  x15,x1,x4    20%-6
+//0241C833   # DIV  x16,x3,x4    -20/-6
+//0241E8B3   # REM  x17,x3,x4    -20%-6
+//0262C933   # DIV  x18,x5,x6    -7/3
+//0262E9B3   # REM  x19,x5,x6    -7%3
+//0221DA33   # DIVU x20,x3,x2    (0xFFFFFFEC)/6
+//0221FAB3   # REMU x21,x3,x2    (0xFFFFFFEC)%6
+
+
+// TEST K - Test for all four new branches — BLT/BGE/BLTU/BGEU, with the critical signed-vs-unsigned discriminators:
+
+//FFB00093   # ADDI x1,x0,-5
+//00300113   # ADDI x2,x0,3
+//FFF00193   # ADDI x3,x0,-1     0xFFFFFFFF (-1 signed / max unsigned)
+//00100213   # ADDI x4,x0,1
+//00000513   # ADDI x10,x0,0     result marker (stays 0 if all pass)
+//0020C463   # BLT  x1,x2,+8     -5 < 3 signed -> TAKEN
+//06F00513   # ADDI x10,x0,111   (fail marker)
+//00100593   # ADDI x11,x0,1
+//00115463   # BGE  x2,x1,+8     3 >= -5 signed -> TAKEN
+//0DE00513   # ADDI x10,x0,222   (fail marker)
+//00100613   # ADDI x12,x0,1
+//0020D463   # BGE  x1,x2,+8     -5 >= 3 -> NOT taken
+//00700693   # ADDI x13,x0,7     (should run)
+//00900713   # ADDI x14,x0,9     (should run)
+//00326463   # BLTU x4,x3,+8     1 < max unsigned -> TAKEN
+//14D00513   # ADDI x10,x0,333   (fail marker)
+//00100793   # ADDI x15,x0,1
+//0041E463   # BLTU x3,x4,+8     max < 1 unsigned -> NOT taken
+//02A00813   # ADDI x16,x0,42    (should run)
+//02B00893   # ADDI x17,x0,43    (should run)
+//0041C463   # BLT  x3,x4,+8     -1 < 1 signed -> TAKEN
+//1BC00513   # ADDI x10,x0,444   (fail marker)
+//00100913   # ADDI x18,x0,1
+//0041F463   # BGEU x3,x4,+8     max >= 1 unsigned -> TAKEN
+//22B00513   # ADDI x10,x0,555   (fail marker)
+//00100993   # ADDI x19,x0,1
+//06300A13   # ADDI x20,x0,99    end marker
+
+
+// TESK L - LUI/AUIPC test:
+
+123450B7   # LUI   x1,0x12345    x1 = 0x12345000
+FFFFF137   # LUI   x2,0xFFFFF    x2 = 0xFFFFF000
+123451B7   # LUI   x3,0x12345    x3 = 0x12345000
+67818193   # ADDI  x3,x3,0x678   x3 = 0x12345678
+00000237   # LUI   x4,0x0        x4 = 0
+10000297   # AUIPC x5,0x10000    x5 = PC(0x14) + 0x10000000
+00000317   # AUIPC x6,0x0        x6 = PC(0x18) + 0
+00001397   # AUIPC x7,0x1        x7 = PC(0x1C) + 0x1000
+06300513   # ADDI  x10,x0,99     end marker

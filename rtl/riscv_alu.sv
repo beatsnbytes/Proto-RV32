@@ -38,6 +38,8 @@ module riscv_alu(
             5'b01000 : result = $signed(a) >>> b[4:0];                      // SRA, SRAI
             5'b00100 : result = ($signed(a) < $signed(b)) ? 32'b1 : 32'b0;  // SLT, SLTI
             5'b00101 : result = (a < b) ? 32'b1 : 32'b0;                    // SLTU, SLTIU
+            5'b01011 : result = b << 12;                                    // LUI
+            5'b01100 : result = a + (b << 12);                              // AUIPC
             default : result = 0;
         endcase
         zero = (result == 32'b0);
