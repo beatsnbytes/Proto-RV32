@@ -143,11 +143,14 @@ module riscv_fetch_decode (
     output logic memory_read, 
     output logic memory_write,
     output logic memory_to_reg, // Writeback mux 0 = ALU_RESULT, 1 = memory data
+    // Output signals from JAL/JALR instructions
+    output logic is_jal,
+    output logic is_jalr,
     // Output signals for the CSR file
-    output logic csr_wr_en, 
-    output logic csr_rd_en, 
     output logic [11:0] csr_addr, 
-    output logic csr_rw
+    output logic is_csr,
+    output logic csr_wr_en, 
+    output logic [1:0] csr_op
 );
 
 //TODO Are any signals now irrelevant to be created here and we could derive them from the ex_op bits?
@@ -183,10 +186,14 @@ module riscv_fetch_decode (
         memory_write = 1'b0;
         memory_to_reg = 1'b0;
         // Default signals for CSR
-        csr_rd_en  = 1'b0;
-        csr_wr_en = 1'b0;
         csr_addr = 12'b0;
-        csr_rw = 1'b0;
+        is_csr = 1'b0;
+        // csr_rd_en  = 1'b0;
+        csr_wr_en = 1'b0;
+        // csr_rw = 1'b0;
+        // JAL signals
+        is_jal = 1'b0;
+        is_jalr = 1'b0;
         case (opcode) 
             7'b0110011 : begin
                 // R-type ALU, M-extension
@@ -285,13 +292,44 @@ module riscv_fetch_decode (
                 exec_op = 5'b00001; // Use the ADD to compute the address
             end
             //TODO need fixing. I now only cater for a small part of this. Implement from start and verify they are ok!
-            // -- CSRRW, CSRRS 
+            // -- CSR Instructions 
             7'b1110011: begin
-                csr_rw = (func3 == 3'b001) ? 1'b1 : 1'b0; // Signal that is set when csrrw and unset otherwise
-                csr_wr_en = 1'b1;
-                csr_rd_en = 1'b1;
+                // TODO perform the simple decoder case first and then make elegant
                 csr_addr = instr[31:20];
+                csr_op = func3[1:0];
                 reg_wr_en = 1'b1;
+                is_csr = 1'b1;
+                // csr_wr_en = ~((func3[1]==1'b1) && ((imm==32'b0) || (rs1_addr==5'b0))); // The csr_wr_en is 1 except when the clear/set have imm or rs1 ==0.
+                // csr_rd_en = 1'b1;                
+                case(func3)
+                    3'b001: begin //  CSRRW  csr read/write
+                        csr_wr_en = 1'b1;
+                    end 
+                    3'b010: begin //  CSRRS csr read/set (OR)
+                        csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0)); // The csr_wr_en is 1 except when the clear/set have imm or rs1 ==0.
+                    end 
+                    3'b011: begin //  CSRRC csr read/clear (AND ~)
+                        csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
+                    end 
+                    3'b101: begin //  CSRRWI csr read/write imm
+                        use_imm = 1'b1;
+                        imm = {{27{instr[19]}}, instr[19:15]};
+                        csr_wr_en = 1'b1;
+                    end 
+                    3'b110: begin //  CSRRSI csr read/set imm
+                        use_imm = 1'b1;
+                        imm = {{27{instr[19]}}, instr[19:15]};
+                        csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
+                    end 
+                    3'b111: begin //  CSRRCI csr read/clear imm
+                        use_imm = 1'b1;
+                        imm = {{27{instr[19]}}, instr[19:15]};
+                        csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
+                    end 
+                    default:;
+                endcase
+
+                // csr_rw = (func3 == 3'b001) ? 1'b1 : 1'b0; // Signal that is set when csrrw and unset otherwise
             end
             7'b0110111: begin // LUI
                 imm = {{12{instr[31]}}, instr[31:12]};
@@ -304,6 +342,20 @@ module riscv_fetch_decode (
                 use_imm = 1'b1;
                 reg_wr_en = 1'b1;
                 exec_op = 5'b01100;
+            end
+            7'b1101111: begin // JAL
+                reg_wr_en = 1'b1;
+                is_jal = 1'b1;
+                use_imm = 1'b1;
+                imm = {{12{instr[31]}}, instr[19:12], instr[20], instr[30:21], 1'b0}; // Imm[0]=0 allways since instructions are allways 2B aligned
+            end
+            7'b1100111: begin // JALR
+                reg_wr_en = 1'b1;
+                is_jalr = 1'b1;
+                use_imm = 1'b1;
+                imm = {{20{instr[31]}}, instr[31:20]}; // Use the I-type immediate
+                exec_op = 5'b00001; // Use ALU's ADD to compute rs1 + imm
+
             end
             default : ; // All signals already set by the top level default
         endcase

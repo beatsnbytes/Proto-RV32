@@ -8,7 +8,6 @@ module riscv_execute (
     // From the fetch & decode
     input logic [4:0] rs1_addr,
     input logic [4:0] rs2_addr,
-    input logic [4:0] rd_addr,
     input logic [31:0] pc,
     input logic reg_wr_en,
     input logic use_imm,
@@ -22,15 +21,15 @@ module riscv_execute (
     input logic [4:0] wb_rd_addr,
     input logic wb_reg_wr_en, 
     // CSR-related
-    input logic [31:0] csr_rd_data,
-    input logic csr_rd_en, 
-    input logic csr_rw, 
+    input logic [11:0] csr_addr,
+    input logic is_csr,
+    input logic csr_wr_en,
+    input logic [1:0] csr_op,
     // ALU-related
     output logic [31:0] exec_result,
     output logic zero,
     output logic [31:0] memory_wr_data,
-    output logic muldiv_busy,
-    output logic [31:0] csr_wr_data
+    output logic muldiv_busy
 );
 
     // From the regfile
@@ -56,16 +55,15 @@ module riscv_execute (
     logic is_muldiv_instr;
     logic is_mul_instr;
     logic is_div_instr;
-    logic [31:0] div_result;    
+    logic [31:0] div_result;  
+
+    logic [31:0] csr_rd_data;  
+    logic write_op, set_op, clear_op;
+    logic [31:0] modifier_op;
+    logic [31:0] csr_wr_data;
 
     // MUX logic forwarding the correct value to the ALU
     always_comb begin
-        // case(fwd_to_rs1)
-        //     2'b00: op_a = rs1_data;
-        //     2'b10: op_a = mem_fwd_data;
-        //     2'b11: op_a = wb_fwd_data;
-        //     default: op_a = rs1_data; // Defaulting to rs1 data for the invalid value of 10
-        // endcase
         case(fwd_to_rs1)
             2'b00: rs1_fwd_data = rs1_data;
             2'b10: rs1_fwd_data = mem_fwd_data;
@@ -89,7 +87,8 @@ module riscv_execute (
 
 
     // The data to be written to the CSR address depending on if csrrw or csrrs
-    assign csr_wr_data = csr_rw ? op_a : (op_a | csr_rd_data);
+    // assign csr_wr_data = csr_rw ? op_a : (op_a | csr_rd_data);
+
 
     riscv_regfile riscv_regfile_inst(
         .clk(clk),
@@ -101,6 +100,31 @@ module riscv_execute (
         .rd_data(wb_data), // Write data
         .rs1_data(rs1_data), // Read port 1 data
         .rs2_data(rs2_data) // Read port 2 data
+    );
+
+
+    always_comb begin: csr_modify_write
+    //TODO get his directly from the decoder as a csr_op signal
+        write_op = (csr_op==2'b01);
+        set_op = (csr_op==2'b10);
+        clear_op = (csr_op==2'b11);
+
+        // TODO shouldsnt I use the op_a in case something gets forwarded?
+        modifier_op = use_imm ? imm : op_a;
+        csr_wr_data = write_op ? modifier_op
+               : set_op   ? (csr_rd_data | modifier_op)
+               : clear_op ? (csr_rd_data & ~modifier_op)
+               : csr_rd_data;
+    end
+
+
+    riscv_csr riscv_csr_inst(
+        .clk(clk), 
+        .rst(rst),
+        .csr_addr(csr_addr),
+        .csr_wr_en(csr_wr_en),
+        .csr_wr_data(csr_wr_data),
+        .csr_rd_data(csr_rd_data)
     );
 
     riscv_alu riscv_alu_inst(
@@ -118,7 +142,6 @@ module riscv_execute (
         is_signed_op_a = exec_op[1];
         is_signed_op_b = exec_op[0];
         high_low_select = exec_op[2];
-        // is_mul_instr = is_muldiv_instr && !is_div_instr;
         is_mul_instr = (exec_op[4:3]==2'b10);
     end
 
@@ -156,7 +179,7 @@ module riscv_execute (
 
     always_comb begin
         unique case(1'b1)
-            csr_rd_en:  exec_result = csr_rd_data;
+            is_csr:  exec_result = csr_rd_data;
             is_muldiv_instr: exec_result = is_div_instr ? div_result : mul_result;
             default:    exec_result = alu_result; // Default case is when result_src==0 and the ALU result takes priority           
         endcase

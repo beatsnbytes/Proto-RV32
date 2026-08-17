@@ -200,12 +200,79 @@
 
 // TESK L - LUI/AUIPC test:
 
-123450B7   # LUI   x1,0x12345    x1 = 0x12345000
-FFFFF137   # LUI   x2,0xFFFFF    x2 = 0xFFFFF000
-123451B7   # LUI   x3,0x12345    x3 = 0x12345000
-67818193   # ADDI  x3,x3,0x678   x3 = 0x12345678
-00000237   # LUI   x4,0x0        x4 = 0
-10000297   # AUIPC x5,0x10000    x5 = PC(0x14) + 0x10000000
-00000317   # AUIPC x6,0x0        x6 = PC(0x18) + 0
-00001397   # AUIPC x7,0x1        x7 = PC(0x1C) + 0x1000
-06300513   # ADDI  x10,x0,99     end marker
+//123450B7   # LUI   x1,0x12345    x1 = 0x12345000
+//FFFFF137   # LUI   x2,0xFFFFF    x2 = 0xFFFFF000
+//123451B7   # LUI   x3,0x12345    x3 = 0x12345000
+//67818193   # ADDI  x3,x3,0x678   x3 = 0x12345678
+//00000237   # LUI   x4,0x0        x4 = 0
+//10000297   # AUIPC x5,0x10000    x5 = PC(0x14) + 0x10000000
+//00000317   # AUIPC x6,0x0        x6 = PC(0x18) + 0
+//00001397   # AUIPC x7,0x1        x7 = PC(0x1C) + 0x1000
+//06300513   # ADDI  x10,x0,99     end marker
+
+// TEST M - JAL forward jump + link
+// Expected: x1=0x8 (return addr = JAL's PC+4), x10=0 (skipped instrs didn't run), x11=5 (target reached). Checks: link saved correctly, jump lands right, shadow flushed.
+
+//00000513   # ADDI x10,x0,0     marker
+//00C000EF   # JAL  x1,+12       x1 = 0x8 (link), jump to 0x10
+//06F00513   # ADDI x10,x0,111   SKIPPED
+//0DE00513   # ADDI x10,x0,222   SKIPPED
+//00500593   # ADDI x11,x0,5     TARGET (0x10)
+
+
+// TEST N — JALR to computed address + link
+// Expected: x2=0xC (link), x10=0, x11=7 (target 0x1C reached). Checks: JALR computes target from rs1+imm, link saved, jump lands.
+
+//01800293   # ADDI x5,x0,0x18   x5 = target address
+//00000513   # ADDI x10,x0,0     marker
+//00028167   # JALR x2,0(x5)     x2 = 0xC (link), jump to x5=0x18
+//06F00513   # ADDI x10,x0,111   SKIPPED
+//0DE00513   # ADDI x10,x0,222   SKIPPED
+//14D00513   # ADDI x10,x0,333   SKIPPED
+//00700593   # ADDI x11,x0,7     TARGET (0x18)
+
+// TEST O — CALL / RETURN (the real test):
+// Flow: JAL calls function at 0x14 (saving ra=0x08) → function sets x13=9 → JALR x0,0(x1) returns to ra (0x08) → x12=1 → JAL x0 jumps to end → x14=99.
+// Expected: x1=0x08 (ra), x13=9 (function ran), x12=1 (returned to correct address), x14=99 (end), x10=0.
+
+//00000513   # ADDI x10,x0,0        0x00 marker
+//010000EF   # JAL  x1,+16          0x04 CALL func@0x14, ra(x1)=0x08
+//00100613   # ADDI x12,x0,1        0x08 AFTER RETURN: x12=1
+//0100006F   # JAL  x0,+16          0x0C jump past func to end@0x1C
+//00000513   # ADDI x10,x0,0        0x10 filler
+//00900693   # ADDI x13,x0,9        0x14 FUNCTION body: x13=9
+//00008067   # JALR x0,0(x1)        0x18 RETURN to ra (0x08)
+//06300713   # ADDI x14,x0,99       0x1C END: x14=99
+
+// TEST P — mcycle increments:
+// Expected: x2 > x1 (mcycle advanced), x3 = small positive (cycles elapsed between reads). 
+// The exact delta depends on your pipeline depth/CPI, but the key checks: x1 ≠ x2, x2 > x1, x3 is a small positive count. 
+// This proves the counter is running and readable.
+
+//B00020F3   # CSRRS x1,mcycle,x0   x1 = mcycle @ t1 (pure read, rs1=x0)
+//00100293   # ADDI  x5,x0,1        burn cycles
+//00200313   # ADDI  x6,x0,2
+//00300393   # ADDI  x7,x0,3
+//B0002173   # CSRRS x2,mcycle,x0   x2 = mcycle @ t2
+//401101B3   # SUB   x3,x2,x1       x3 = x2 - x1
+
+
+// TEST Q — write mcycle, read back:
+// Expected: x2 ≈ 100 + (a few cycles) — a value near 100, NOT a huge free-running number. 
+// This confirms CSRRW actually wrote mcycle (overriding the free-running value). If x2 is huge/unrelated to 100, your CSRRW write isn't landing.
+
+06400093   # ADDI  x1,x0,100
+B0009073   # CSRRW x0,mcycle,x1   mcycle = 100 (rd=x0 discards old)
+06400093   # ADDI  x1,x0,100
+06400093   # ADDI  x1,x0,100
+06400093   # ADDI  x1,x0,100
+06400093   # ADDI  x1,x0,100
+06400093   # ADDI  x1,x0,100
+B0002173   # CSRRS x2,mcycle,x0   x2 = mcycle
+
+
+
+
+
+
+
