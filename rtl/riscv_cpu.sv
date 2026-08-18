@@ -12,6 +12,7 @@ module riscv_cpu (
     input logic cpu_req_ready,
     output logic [31 : 0] cpu_addr,
     output logic [31 : 0] cpu_wdata,
+    output logic [3:0] cpu_wmask,
     input logic [31 : 0] cpu_resp_data,
     input logic cpu_resp_valid,
     output logic cpu_resp_ready
@@ -100,6 +101,11 @@ module riscv_cpu (
     logic cache_operation_done;
     logic mem_memory_read;
     logic mem_is_jal, mem_is_jalr;
+    logic [2:0] mem_func3;
+    logic is_store_word, is_store_half_word, is_store_byte;
+    logic is_load_word, is_load_half_word, is_load_byte, is_load_signed;
+    logic [3:0] write_mask;
+    logic [31:0] sized_load_data;
 
     // WB pipeline registers
     logic [31:0] wb_exec_result;
@@ -116,6 +122,8 @@ module riscv_cpu (
     logic [31:0] mem_pc, wb_pc;
     logic wb_is_jal, wb_is_jalr;
     logic [31:0] wb_return_address_data;
+    logic [31:0] last_wb_pc;
+    logic is_retired_inst_valid;
 
     
     // Compute next pc
@@ -279,6 +287,7 @@ module riscv_cpu (
             mem_pc <= 32'b0;
             mem_is_jal <= 1'b0;
             mem_is_jalr <= 1'b0;
+            mem_func3 <= 3'b0;
         end else if (mem_stall) begin
             // FREEZE - hold current values - no assignment needed here
         end else if (muldiv_busy) begin
@@ -294,6 +303,7 @@ module riscv_cpu (
             mem_pc <= 32'b0;
             mem_is_jal <= 1'b0;
             mem_is_jalr <= 1'b0;
+            mem_func3 <= 3'b0;
         end else begin
             mem_exec_result <= exec_result;
             mem_memory_to_reg <= ex_memory_to_reg;
@@ -308,23 +318,11 @@ module riscv_cpu (
             mem_pc <= ex_pc;
             mem_is_jal <= ex_is_jal;
             mem_is_jalr <= ex_is_jalr;
+            mem_func3 <= ex_func3;
         end
     end
 
 
-    // Put here the forwarding logic for the CSR instructions. 
-    // If the instruction in EX stage is writing to CSR and the current instruction is reading from the same CSR, 
-    // then we need to forward the data from MEM pipeline register instead of reading from the CSR regfile 
-    // (which will have the old value until the write happens at the end of MEM stage)
-    // assign fwd_csr = mem_csr_wr_en && (ex_csr_addr == mem_csr_addr);
-    // assign fwd_csr_rd_data = fwd_csr ? mem_csr_wr_data : csr_rd_data;
-
-
-
-    // TODO validate if the code below works also for forwarding the value read from CSR into the rd addr Probably yes
-    // Compare the current source registers with the destination register that just wrote back
-    // Also the destination register should not be x0 (which is always zero) ad the wr_en should be high
-    // Deciding on the execute stage result forwarding from mem back to ex. The memory result cannot be forwarded since it will only be ready in wb stage.
     assign fwd_mem_rs1 = ( (mem_reg_wr_en && !mem_memory_to_reg) && (ex_rs1_addr == mem_rd_addr) 
                     && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
     assign fwd_mem_rs2 = ( (mem_reg_wr_en && !mem_memory_to_reg) && (ex_rs2_addr == mem_rd_addr) 
@@ -366,6 +364,7 @@ logic busy;
         cpu_req_write = 1'b0;
         cpu_addr = 32'b0;
         cpu_wdata = 32'b0;
+        cpu_wmask = 4'b0;
         cpu_resp_ready = 1'b0;
         case(current_state)
             MEM_SEND_REQUEST: begin
@@ -373,6 +372,7 @@ logic busy;
                 cpu_req_write = mem_memory_write;                
                 cpu_addr = mem_exec_result; // In the case of a memory instruction the computed adress comes from the output of the ALU
                 cpu_wdata = mem_memory_wr_data;
+                cpu_wmask = write_mask;
             end
             MEM_WAIT_RESPONSE: begin
                 cpu_resp_ready = 1'b1;
@@ -380,11 +380,51 @@ logic busy;
             default:;
         endcase
     end
+    // End of cache-related FSM model
+
+    always_comb begin:handle_sub_word_stores
+        is_store_word = (mem_func3==3'b010);
+        is_store_half_word = (mem_func3==3'b001);
+        is_store_byte = (mem_func3==3'b000);
+    
+        case(mem_func3)
+            3'b010: write_mask = 4'b1111; //SW
+            3'b001: write_mask = mem_exec_result[1] ? 4'b1100 : 4'b0011; // SH (upper-half), SH (lower-half)
+            3'b000: write_mask = 4'b0001 << mem_exec_result[1:0]; // SB (byte3, byte2, bye1, byte0)
+            default: write_mask = 4'b0000; //Default to write nothing
+        endcase
+
+    end
+
+    // The signals below assume that in the mem_stall case all MEM register signals stay frozen so there is no need to latch any signals mid stall
+    always_comb begin : handle_sub_word_loads
+        is_load_word = (mem_func3==3'b010); 
+        is_load_half_word = (mem_func3[0] == 1'b1);
+        is_load_byte = (mem_func3[0] == 1'b0) && !(mem_func3[1] == 1'b1); // Avoid matching the case of LW func3=010
+        is_load_signed = (mem_func3[2] == 1'b0) && !(mem_func3[1] == 1'b1);
+        sized_load_data = 32'b0;
+
+        if (is_load_word) begin
+            sized_load_data = cpu_resp_data;
+        end else if (is_load_half_word) begin // LH
+            if (mem_exec_result[1]==1'b0) begin // the lower half
+                sized_load_data = is_load_signed ? { {16{cpu_resp_data[15]}}, cpu_resp_data[15:0] } : { 16'b0, cpu_resp_data[15:0] }; 
+            end else begin // the upper half
+                sized_load_data = is_load_signed ? { {16{cpu_resp_data[31]}}, cpu_resp_data[31:16] } : { 16'b0, cpu_resp_data[31:16] }; 
+            end
+        end else if (is_load_byte) begin // LB
+            case(mem_exec_result[1:0])
+                2'b00: sized_load_data = is_load_signed ? { {24{cpu_resp_data[7]}}, cpu_resp_data[7:0] } : { 24'b0, cpu_resp_data[7:0] };
+                2'b01: sized_load_data = is_load_signed ? { {24{cpu_resp_data[15]}}, cpu_resp_data[15:8] } : { 24'b0, cpu_resp_data[15:8] };
+                2'b10: sized_load_data = is_load_signed ? { {24{cpu_resp_data[23]}}, cpu_resp_data[23:16] } : { 24'b0, cpu_resp_data[23:16] };
+                2'b11: sized_load_data = is_load_signed ? { {24{cpu_resp_data[31]}}, cpu_resp_data[31:24] } : { 24'b0, cpu_resp_data[31:24] };
+                default: sized_load_data = 32'b0;
+            endcase
+        end
+    end
 
     assign mem_stall = (mem_memory_read || mem_memory_write) && !(cpu_resp_ready && cpu_resp_valid); // Safe only while cache handshake outputs are registered/glitch-free (Moore)
-    assign memory_load_data = (cpu_resp_ready && cpu_resp_valid) ? cpu_resp_data : 32'b0;
-
-    // End of cache-related FSM model
+    assign memory_load_data = (cpu_resp_ready && cpu_resp_valid) ? sized_load_data : 32'b0;
 
     // MEM/WB pipeline register
     always_ff @(posedge clk) begin
@@ -418,19 +458,12 @@ logic busy;
         end
     end
 
-    logic [31:0] last_wb_pc;
-    logic is_retired_inst_valid;
+
     always_ff @(posedge clk) begin : minstret_signal_generation
         if (rst) begin
             last_wb_pc <= 32'b0;
-            // is_retired_inst_valid <= 1'b0;
         end else begin
             last_wb_pc <= wb_pc;
-            // if ((last_wb_pc != wb_pc) && (last_wb_pc != 32'b0)) begin // If we changed the PC and its not a NOP
-            //     is_retired_inst_valid <= 1'b1;
-            // end else begin
-            //     is_retired_inst_valid <= 1'b0;
-            // end
         end
     end
     assign is_retired_inst_valid = ((last_wb_pc != wb_pc) && (last_wb_pc != 32'b0)); // If the PC changed and its not a NOP
