@@ -261,14 +261,14 @@
 // Expected: x2 ≈ 100 + (a few cycles) — a value near 100, NOT a huge free-running number. 
 // This confirms CSRRW actually wrote mcycle (overriding the free-running value). If x2 is huge/unrelated to 100, your CSRRW write isn't landing.
 
-06400093   # ADDI  x1,x0,100
-B0009073   # CSRRW x0,mcycle,x1   mcycle = 100 (rd=x0 discards old)
-06400093   # ADDI  x1,x0,100
-06400093   # ADDI  x1,x0,100
-06400093   # ADDI  x1,x0,100
-06400093   # ADDI  x1,x0,100
-06400093   # ADDI  x1,x0,100
-B0002173   # CSRRS x2,mcycle,x0   x2 = mcycle
+//06400093   # ADDI  x1,x0,100
+//B0009073   # CSRRW x0,mcycle,x1   mcycle = 100 (rd=x0 discards old)
+//06400093   # ADDI  x1,x0,100
+//06400093   # ADDI  x1,x0,100
+//06400093   # ADDI  x1,x0,100
+//06400093   # ADDI  x1,x0,100
+//06400093   # ADDI  x1,x0,100
+//B0202173   # CSRRS x2,minstret,x0   x2 = minstret
 
 
 

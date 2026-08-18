@@ -259,7 +259,8 @@ module riscv_cpu (
         .csr_addr(ex_csr_addr),
         .is_csr(ex_is_csr),
         .csr_wr_en(ex_csr_wr_en),
-        .csr_op(ex_csr_op)
+        .csr_op(ex_csr_op),
+        .is_retired_inst_valid(is_retired_inst_valid)
     );
 
 
@@ -417,15 +418,30 @@ logic busy;
         end
     end
 
+    logic [31:0] last_wb_pc;
+    logic is_retired_inst_valid;
+    always_ff @(posedge clk) begin : minstret_signal_generation
+        if (rst) begin
+            last_wb_pc <= 32'b0;
+            // is_retired_inst_valid <= 1'b0;
+        end else begin
+            last_wb_pc <= wb_pc;
+            // if ((last_wb_pc != wb_pc) && (last_wb_pc != 32'b0)) begin // If we changed the PC and its not a NOP
+            //     is_retired_inst_valid <= 1'b1;
+            // end else begin
+            //     is_retired_inst_valid <= 1'b0;
+            // end
+        end
+    end
+    assign is_retired_inst_valid = ((last_wb_pc != wb_pc) && (last_wb_pc != 32'b0)); // If the PC changed and its not a NOP
+
+
     always_comb begin : writeback_logic
         // Writeback MUX (Decide between JAL, ALU and memory results) 
         wb_return_address_data = wb_pc + 32'd4; //TODO maybe capture the normal PC+4 and carry it down here?
         wb_data = (wb_is_jal || wb_is_jalr) ? wb_return_address_data 
                                             : (wb_memory_to_reg ? wb_memory_load_data 
                                             :  wb_exec_result);
-
-        //TODO Do I need to forward the csr values somehow back to the EX stage specifically or are they handled by the rest of the design already??
-        // TODO they are not since I have different signals for the CSR. its not rs1_addr or rs2_addr but csr_rd_Addr etc. Do I need forwarding at all?
 
         // Forwarding logic for the WB stage
         fwd_wb_rs1 = ((ex_rs1_addr == wb_rd_addr) && (wb_rd_addr != 5'b0)) ? 1'b1 : 1'b0;

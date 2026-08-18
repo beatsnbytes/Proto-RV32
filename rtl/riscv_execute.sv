@@ -20,16 +20,17 @@ module riscv_execute (
     input logic [1:0] fwd_to_rs2,
     input logic [4:0] wb_rd_addr,
     input logic wb_reg_wr_en, 
+        // ALU-related
+    output logic [31:0] exec_result,
+    output logic zero,
+    output logic [31:0] memory_wr_data,
+    output logic muldiv_busy,
     // CSR-related
     input logic [11:0] csr_addr,
     input logic is_csr,
     input logic csr_wr_en,
     input logic [1:0] csr_op,
-    // ALU-related
-    output logic [31:0] exec_result,
-    output logic zero,
-    output logic [31:0] memory_wr_data,
-    output logic muldiv_busy
+    input logic is_retired_inst_valid
 );
 
     // From the regfile
@@ -124,7 +125,8 @@ module riscv_execute (
         .csr_addr(csr_addr),
         .csr_wr_en(csr_wr_en),
         .csr_wr_data(csr_wr_data),
-        .csr_rd_data(csr_rd_data)
+        .csr_rd_data(csr_rd_data),
+        .is_retired_inst_valid(is_retired_inst_valid)
     );
 
     riscv_alu riscv_alu_inst(
