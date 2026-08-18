@@ -17,6 +17,7 @@ module riscv_soc (
         .cpu_req_ready(cpu_req_ready),
         .cpu_addr(cpu_addr),
         .cpu_wdata(cpu_wdata),
+        .cpu_wmask(cpu_wmask),
         .cpu_resp_data(cpu_resp_data),
         .cpu_resp_valid(cpu_resp_valid),
         .cpu_resp_ready(cpu_resp_ready)        
@@ -28,6 +29,7 @@ module riscv_soc (
     logic cpu_req_ready;
     logic [31:0] cpu_addr;
     logic [31:0] cpu_wdata;
+    logic [3:0] cpu_wmask;
     logic cpu_resp_ready;
     logic cpu_resp_valid;
     logic [31:0] cpu_resp_data;
@@ -52,6 +54,7 @@ module riscv_soc (
         .cpu_req_ready(cpu_req_ready),
         .cpu_addr(cpu_addr),
         .cpu_wdata(cpu_wdata),
+        .cpu_wmask(cpu_wmask),
         .cpu_resp_data(cpu_resp_data),
         .cpu_resp_valid(cpu_resp_valid),
         .cpu_resp_ready(cpu_resp_ready),   

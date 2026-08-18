@@ -10,6 +10,7 @@ module direct_mapped_cache (
     output logic cpu_req_ready,
     input logic [ADDR_WIDTH-1 : 0] cpu_addr,
     input logic [31 : 0] cpu_wdata,
+    input logic [3:0] cpu_wmask,
     output logic [31 : 0] cpu_resp_data,
     output logic cpu_resp_valid,
     input logic cpu_resp_ready,
@@ -47,7 +48,9 @@ module direct_mapped_cache (
     logic evict_line;
     logic evict_line_r;
     logic write_done;
-    logic [31 : 0] cpu_wdata_r;
+    logic [31 : 0] cpu_wdata_r, cpu_wdata_masked_r;
+    logic [3:0] cpu_wmask_r;
+    logic [31:0] mask_extended_r;
  
     logic [TAG_WIDTH-1 : 0] tag_mem [CACHE_ENTRIES - 1 : 0];
     logic [DATA_LINE_WIDTH-1 : 0] data_mem [CACHE_ENTRIES - 1 : 0];
@@ -76,6 +79,8 @@ module direct_mapped_cache (
     assign hit = (tag == tag_mem[index]) && (valid_bit_mem[index]); // Hit is tag matches and the valid bit is asserted
 
     assign evict_line = valid_bit_mem[index] && dirty_bit_mem[index]; 
+
+    assign mask_extended_r = { {8{cpu_wmask_r[3]}}, {8{cpu_wmask_r[2]}}, {8{cpu_wmask_r[1]}}, {8{cpu_wmask_r[0]}} };
 
     // Next state logic - combinational
     always_comb begin
@@ -147,11 +152,14 @@ module direct_mapped_cache (
             cpu_addr_r <= '0;
             is_write_r <= '0;
             cpu_wdata_r <= '0;
+            cpu_wmask_r <= '0;
             evict_line_r <= '0;
         end else if ((current_state == IDLE) && (cpu_req_ready && cpu_req_valid)) begin
             cpu_addr_r <= cpu_addr;
             is_write_r <= cpu_req_write;
             cpu_wdata_r <= cpu_wdata;
+            cpu_wmask_r <= cpu_wmask;
+            // cpu_wdata_masked_r <= cpu_wdata & mask_extended;
             evict_line_r <= evict_line;
         end
     end
@@ -177,11 +185,22 @@ module direct_mapped_cache (
                 dirty_bit_mem[index_r] <= 1'b0; // Need to overwrite with 0 in case the previous line was dirty and there was the value 1 as remnant
             end
             if ((current_state == WRITE) && (!write_done)) begin
-                data_mem[index_r][offset_r[3:2]*32 +: 32] <= cpu_wdata_r;
+                data_mem[index_r][offset_r[3:2]*32 +: 32] <= masked_word_written;
+                // data_mem[index_r][offset_r[3:2]*32 +: 32] <= cpu_wdata_masked_r;
                 dirty_bit_mem[index_r] <= 1'b1; // In a write-back memory a write to cache means dirty bit is asserted for the whole line
                 write_done <= 1'b1; 
             end
         end
+    end
+
+    logic [31:0] selected_cache_line_word, selected_cache_line_word_masked, masked_word_written;
+    always_comb begin : write_masked_word
+    //TODO have to align the wdata with the mask!
+        selected_cache_line_word = data_mem[index_r][offset_r[3:2]*32 +: 32];
+        selected_cache_line_word_masked = ~mask_extended_r & selected_cache_line_word;
+
+        cpu_wdata_masked_r = mask_extended_r & (cpu_wdata_r << {cpu_addr_r[1:0], 3'b0}); // Align the data to be written with the mask
+        masked_word_written = selected_cache_line_word_masked | cpu_wdata_masked_r;
     end
 
 

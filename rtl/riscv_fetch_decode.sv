@@ -275,61 +275,59 @@ module riscv_fetch_decode (
                     default: exec_op = 5'b00000; // NOP
                 endcase
             end
-            // -- LW
+            // -- LW, LH, LHU, LB, LBU
             7'b0000011 : begin
                 memory_read = 1'b1;
                 reg_wr_en = 1'b1;
                 memory_to_reg = 1'b1; // memory_read && reg_wr_en
                 imm = {{20{instr[31]}}, instr[31:20]}; 
                 use_imm = 1'b1;
-                exec_op = 5'b00001; // Use the ADD to compute the address
+                exec_op = 5'b00001; // Use the ADD to compute the address (known at EX stage)
             end
             // -- SW
             7'b0100011 : begin
                 memory_write = 1'b1;
                 imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};
                 use_imm = 1'b1;
-                exec_op = 5'b00001; // Use the ADD to compute the address
+                exec_op = 5'b00001; // Use the ADD to compute the address (known at EX stage)
             end
-            //TODO need fixing. I now only cater for a small part of this. Implement from start and verify they are ok!
             // -- CSR Instructions 
             7'b1110011: begin
-                // TODO perform the simple decoder case first and then make elegant
                 csr_addr = instr[31:20];
                 csr_op = func3[1:0];
                 reg_wr_en = 1'b1;
                 is_csr = 1'b1;
-                // csr_wr_en = ~((func3[1]==1'b1) && ((imm==32'b0) || (rs1_addr==5'b0))); // The csr_wr_en is 1 except when the clear/set have imm or rs1 ==0.
-                // csr_rd_en = 1'b1;                
-                case(func3)
-                    3'b001: begin //  CSRRW  csr read/write
-                        csr_wr_en = 1'b1;
-                    end 
-                    3'b010: begin //  CSRRS csr read/set (OR)
-                        csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0)); // The csr_wr_en is 1 except when the clear/set have imm or rs1 ==0.
-                    end 
-                    3'b011: begin //  CSRRC csr read/clear (AND ~)
-                        csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
-                    end 
-                    3'b101: begin //  CSRRWI csr read/write imm
-                        use_imm = 1'b1;
-                        imm = {{27{instr[19]}}, instr[19:15]};
-                        csr_wr_en = 1'b1;
-                    end 
-                    3'b110: begin //  CSRRSI csr read/set imm
-                        use_imm = 1'b1;
-                        imm = {{27{instr[19]}}, instr[19:15]};
-                        csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
-                    end 
-                    3'b111: begin //  CSRRCI csr read/clear imm
-                        use_imm = 1'b1;
-                        imm = {{27{instr[19]}}, instr[19:15]};
-                        csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
-                    end 
-                    default:;
-                endcase
+                csr_wr_en = ~((func3[1]==1'b1) && ((imm==32'b0) || (rs1_addr==5'b0))); // The csr_wr_en is 1 except when the clear/set have imm or rs1 ==0.              
+                imm = {{27{instr[19]}}, instr[19:15]};
+                use_imm = (func3[2]==1'b1);
+                // case(func3) //TODO verify it works!
+                //     3'b001: begin //  CSRRW  csr read/write
+                //         csr_wr_en = 1'b1;
+                //     end 
+                //     3'b010: begin //  CSRRS csr read/set (OR)
+                //         csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0)); // The csr_wr_en is 1 except when the clear/set have imm or rs1 ==0.
+                //     end 
+                //     3'b011: begin //  CSRRC csr read/clear (AND ~)
+                //         csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
+                //     end 
+                //     3'b101: begin //  CSRRWI csr read/write imm
+                //         use_imm = 1'b1;
+                //         imm = {{27{instr[19]}}, instr[19:15]};
+                //         csr_wr_en = 1'b1;
+                //     end 
+                //     3'b110: begin //  CSRRSI csr read/set imm
+                //         use_imm = 1'b1;
+                //         imm = {{27{instr[19]}}, instr[19:15]};
+                //         csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
+                //     end 
+                //     3'b111: begin //  CSRRCI csr read/clear imm
+                //         use_imm = 1'b1;
+                //         imm = {{27{instr[19]}}, instr[19:15]};
+                //         csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
+                //     end 
+                //     default:;
+                // endcase
 
-                // csr_rw = (func3 == 3'b001) ? 1'b1 : 1'b0; // Signal that is set when csrrw and unset otherwise
             end
             7'b0110111: begin // LUI
                 imm = {{12{instr[31]}}, instr[31:12]};

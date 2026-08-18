@@ -271,6 +271,79 @@
 //B0202173   # CSRRS x2,minstret,x0   x2 = minstret
 
 
+// TEST R - Setup — write a distinct-byte-pattern word to memory (run first):
+// Memory word: 0x91725304 — bytes b0=04, b1=53, b2=72, b3=91.
+
+//04000093   # ADDI x1,x0,0x40
+//91725137   # LUI  x2,0x91725
+//30410113   # ADDI x2,x2,772
+//0020A023   # SW   x2,0(x1)      mem[0x40..0x43] = 0x91725304
+
+    // Main test — sub-word loads at all positions
+
+//04000093   # ADDI x1,x0,0x40
+//00008503   # LB  x10,0(x1)
+//00108583   # LB  x11,1(x1)
+//00208603   # LB  x12,2(x1)
+//00308683   # LB  x13,3(x1)
+//0030C703   # LBU x14,3(x1)
+//00009783   # LH  x15,0(x1)
+//00209803   # LH  x16,2(x1)
+//0000D883   # LHU x17,0(x1)
+//0020D903   # LHU x18,2(x1)
+
+
+// TEST S - Sub-word stores
+
+//04000093   # ADDI x1,x0,0x40
+//FFF00113   # ADDI x2,x0,-1        x2 = 0xFFFFFFFF
+//0020A023   # SW   x2,0(x1)        mem[0x40..0x43] = 0xFFFFFFFF
+//0AA00113   # ADDI x2,x0,0xAA
+//00208023   # SB   x2,0(x1)        byte0 = 0xAA
+//0BB00193   # ADDI x3,x0,0xBB
+//00308123   # SB   x3,2(x1)        byte2 = 0xBB
+//2EF00213   # ADDI x4,x0,0x2EF
+//00409023   # SH   x4,0(x1)        halfword0 = 0x02EF  (overwrites byte0/byte1)
+
+// Readback (reusing your verified sub-word loads):
+
+//00008503   # LB  x10,0(x1)
+//00108583   # LB  x11,1(x1)
+//00208603   # LB  x12,2(x1)
+//00308683   # LB  x13,3(x1)
+//00009783   # LH  x15,0(x1)
+
+
+ // TEST T - Testing sub-word stores with eviction
+
+04000093   # ADDI x1,x0,0x40         x1 = 0x40 (target address)
+FFF00113   # ADDI x2,x0,-1           x2 = 0xFFFFFFFF
+0020A023   # SW   x2,0(x1)           mem[0x40..0x43] = 0xFFFFFFFF
+
+0AA00113   # ADDI x2,x0,0xAA
+00208023   # SB   x2,0(x1)           byte0 = 0xAA
+0BB00193   # ADDI x3,x0,0xBB
+00308123   # SB   x3,2(x1)           byte2 = 0xBB
+2EF00213   # ADDI x4,x0,0x2EF
+00409023   # SH   x4,0(x1)           halfword0 = 0x02EF
+
+00008503   # LB   x10,0(x1)          readback BEFORE eviction
+00108583   # LB   x11,1(x1)
+00208603   # LB   x12,2(x1)
+00308683   # LB   x13,3(x1)
+00009783   # LH   x15,0(x1)
+
+44000293   # ADDI x5,x0,0x440        x5 = 0x440 (same index, different tag)
+0002A303   # LW   x6,0(x5)           force eviction + write-back of the 0x40 line
+
+00008503   # LB   x10,0(x1)          readback AFTER eviction (should match pre-eviction values)
+00108583   # LB   x11,1(x1)
+00208603   # LB   x12,2(x1)
+00308683   # LB   x13,3(x1)
+00009783   # LH   x15,0(x1)
+
+
+
 
 
 
