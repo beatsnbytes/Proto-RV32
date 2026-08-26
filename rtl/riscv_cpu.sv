@@ -3,7 +3,9 @@
 // Week10 - Towards a simple RISC-V processor
 
 //TODO perform a general code refactoring. bundle logic together per stage pipeline registers and reorder module instationation, seq and comb blocks where needed
-module riscv_cpu (
+module riscv_cpu #(
+    parameter string IMEM_HEX_FILE = "UNSET.hex"
+ )(
     input logic clk,
     input logic rst,
     //CPU-to-Cache connection
@@ -129,17 +131,21 @@ module riscv_cpu (
     // Compute next pc
     always_ff @(posedge clk) begin
         if (rst) begin
-            pc <= 32'd0;
+            pc <= 32'd0;                 
+        end else if ( muldiv_busy || load_use_hzrd_bubble || mem_stall) begin // mem_stall wins everywhere. In the case of branch_taken alongside with mem_stall the latter will
+                                                                              // win and the pc will "erroneously" show the wrong PC for the mem_stall duration. 
+                                                                              // When it finalizes branch_taken will take over and put the jump pc here.
+            // FREEZE - hold current value - no assignment needed                              
         end else if (branch_taken) begin
-            pc <= target_pc;
-        end else if ( muldiv_busy || load_use_hzrd_bubble || mem_stall) begin 
-            // FREEZE - hold current value - no assignment needed
+            pc <= target_pc;            
         end else begin
             pc <= pc + 32'd4;
         end
     end
     
-    riscv_fetch_decode riscv_fetch_decode_inst(
+    riscv_fetch_decode #(
+        .IMEM_HEX_FILE(IMEM_HEX_FILE)
+    )riscv_fetch_decode_inst(
         .clk(clk),
         .rst(rst),
         .pc(pc),
@@ -167,7 +173,7 @@ module riscv_cpu (
 
 
     always_ff @(posedge clk) begin
-        if(rst || branch_taken) begin
+        if(rst) begin // TODO removed branch_taken from here because it was causing JAL/R instructions while stall to be lost in the pipeline (they werent stalling)
             ex_rs1_addr <= 5'b0;
             ex_rs2_addr <= 5'b0;
             ex_rd_addr <= 5'b0;
@@ -189,7 +195,7 @@ module riscv_cpu (
             ex_is_jalr <= 1'b0;
         end else if (mem_stall || muldiv_busy) begin
             // FREEZE - hold current values - no assignment needed here 
-        end else if (load_use_hzrd_bubble) begin // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
+        end else if (load_use_hzrd_bubble || branch_taken) begin // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
             ex_rs1_addr <= 5'b0;
             ex_rs2_addr <= 5'b0;
             ex_rd_addr <= 5'b0;
@@ -236,7 +242,7 @@ module riscv_cpu (
         target_pc = ex_is_jalr ? (exec_result & ~(32'b1)) : (ex_pc + ex_imm); // Select between (ex_pc + ex_imm) and (rs1 + imm) & ~1 coming from the ALU in the case of JALR
         condition_needs_zero = ((ex_func3==3'b000) || (ex_func3==3'b101) || (ex_func3==3'b111));
         condition_not_needs_zero = ((ex_func3==3'b001) || (ex_func3==3'b100) || (ex_func3==3'b110));
-        branch_taken = ex_is_jal || (ex_branch_instr && ((condition_needs_zero && zero) || (condition_not_needs_zero && !zero)));
+        branch_taken = ex_is_jal || ex_is_jalr || (ex_branch_instr && ((condition_needs_zero && zero) || (condition_not_needs_zero && !zero)));
     end
 
 
@@ -286,7 +292,7 @@ module riscv_cpu (
             mem_memory_wr_data <= '0;
             mem_pc <= 32'b0;
             mem_is_jal <= 1'b0;
-            mem_is_jalr <= 1'b0;
+            // mem_is_jalr <= 1'b0;
             mem_func3 <= 3'b0;
         end else if (mem_stall) begin
             // FREEZE - hold current values - no assignment needed here
@@ -302,7 +308,7 @@ module riscv_cpu (
             mem_memory_wr_data <= '0;
             mem_pc <= 32'b0;
             mem_is_jal <= 1'b0;
-            mem_is_jalr <= 1'b0;
+            // mem_is_jalr <= 1'b0;
             mem_func3 <= 3'b0;
         end else begin
             mem_exec_result <= exec_result;
@@ -317,7 +323,7 @@ module riscv_cpu (
             mem_memory_wr_data <= memory_wr_data;
             mem_pc <= ex_pc;
             mem_is_jal <= ex_is_jal;
-            mem_is_jalr <= ex_is_jalr;
+            // mem_is_jalr <= ex_is_jalr;
             mem_func3 <= ex_func3;
         end
     end
@@ -440,7 +446,7 @@ logic busy;
             wb_memory_load_data <= 32'b0;
             wb_pc <= 32'b0;
             wb_is_jal <= 1'b0;
-            wb_is_jalr <= 1'b0;
+            // wb_is_jalr <= 1'b0;
         end else begin
             wb_exec_result <= mem_exec_result;
             wb_memory_to_reg <= mem_memory_to_reg;
@@ -454,7 +460,7 @@ logic busy;
             wb_memory_load_data <= memory_load_data;
             wb_pc <= mem_pc;
             wb_is_jal <= mem_is_jal;
-            wb_is_jalr <= mem_is_jalr;
+            // wb_is_jalr <= mem_is_jalr;
         end
     end
 
@@ -472,9 +478,9 @@ logic busy;
     always_comb begin : writeback_logic
         // Writeback MUX (Decide between JAL, ALU and memory results) 
         wb_return_address_data = wb_pc + 32'd4; //TODO maybe capture the normal PC+4 and carry it down here?
-        wb_data = (wb_is_jal || wb_is_jalr) ? wb_return_address_data 
-                                            : (wb_memory_to_reg ? wb_memory_load_data 
-                                            :  wb_exec_result);
+        wb_data = wb_is_jal ? wb_return_address_data 
+                            : (wb_memory_to_reg ? wb_memory_load_data 
+                            :  wb_exec_result); // In the case of jalr or nor jal and not memory to reg then we write back the execute stages result
 
         // Forwarding logic for the WB stage
         fwd_wb_rs1 = ((ex_rs1_addr == wb_rd_addr) && (wb_rd_addr != 5'b0)) ? 1'b1 : 1'b0;

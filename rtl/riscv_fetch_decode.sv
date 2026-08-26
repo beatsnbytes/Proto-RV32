@@ -125,7 +125,9 @@
 //       exec_op only names the FUNCTIONAL-UNIT OPERATION.
 
 
-module riscv_fetch_decode (
+module riscv_fetch_decode #(
+    parameter string IMEM_HEX_FILE = "UNSET.hex" // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error
+)(
     input logic clk,
     input logic rst,
     input logic [31:0] pc,
@@ -158,7 +160,7 @@ module riscv_fetch_decode (
     `ifdef FORMAL
         // imem left unconstrained for formal verification
     `else
-        initial $readmemh("program.hex", imem); // Reading the instructions from a hex file
+        initial $readmemh(IMEM_HEX_FILE, imem); // Reading the instructions from a hex file
     `endif
 
     logic [31:0] imem [255:0]; // The 1KB instruction memory
