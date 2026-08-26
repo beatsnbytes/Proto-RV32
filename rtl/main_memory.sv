@@ -3,7 +3,9 @@
     
     //TODO put ports, instantiate memories and whatever else it needs.
 
-    module main_memory (
+    module main_memory #(
+        parameter string DMEM_HEX_FILE = "UNSET.hex" // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error
+    )(
         input logic clk,
         input logic rst,
         input logic mem_req_write, // Read = 0, Write = 1
@@ -25,6 +27,15 @@
     logic [31:0] base;
 
     int read_latency;
+
+
+
+    // --- Load initial memory image ---
+    `ifdef FORMAL
+        // backing_mem left unconstrained for formal verification
+    `else
+    initial $readmemh(DMEM_HEX_FILE, backing_mem);
+    `endif
     
 
 

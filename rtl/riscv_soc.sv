@@ -3,12 +3,17 @@
 
 //TODO change the assertions module hierarchies
 
-module riscv_soc (
+module riscv_soc #(
+    parameter string IMEM_HEX_FILE = "UNSET.hex", // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error,
+    parameter string DMEM_HEX_FILE = "UNSET.hex"
+)(
     input logic clk,
     input logic rst
     );
 
-    riscv_cpu riscv_cpu_inst(
+    riscv_cpu #(
+        .IMEM_HEX_FILE(IMEM_HEX_FILE)
+    )riscv_cpu_inst(
         .clk(clk),
         .rst(rst),
         //CPU-to-Cache interface
@@ -69,7 +74,9 @@ module riscv_soc (
         .mem_resp_data(mem_resp_data)   //128 bits deep
     );
 
-    main_memory main_memory_inst( // 16KB main memory model -- 1024 entries --128 bits wide each -- 4 * 32bit words
+    main_memory #(
+        .DMEM_HEX_FILE(DMEM_HEX_FILE)
+    )main_memory_inst( // 16KB main memory model -- 1024 entries --128 bits wide each -- 4 * 32bit words
         .clk(clk),
         .rst(rst),
         .mem_req_write(mem_req_write),  // Read = 0, Write = 1
