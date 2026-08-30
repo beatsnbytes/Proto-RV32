@@ -63,6 +63,8 @@ total_errors=0
 
 At an assumed 100MHz target clock: **~0.181 CoreMark/MHz**. Modest relative to typical published RV32IM cores (2–3+ CoreMark/MHz) — expected for a straightforward single-issue in-order pipeline with a correctness-first multiplier/divider, not yet tuned for throughput. The value of this number is that it is real, lockstep-verified, and trustworthy.
 
+Measured IPC on this workload: **~0.214** (11,817,617 instructions retired / 55,157,060 cycles, ITERATIONS=10 run), cross-checked against CoreMark's own internally-reported cycle count (55,156,850 — matches within 210 cycles, the small window difference between CoreMark's own timing calls and the wrapping telemetry measurement).
+
 ---
 
 ## Project Structure

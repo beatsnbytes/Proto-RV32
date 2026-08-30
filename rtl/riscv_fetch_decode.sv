@@ -126,8 +126,7 @@
 
 
 module riscv_fetch_decode #(
-//    parameter string IMEM_HEX_FILE = "UNSET.hex" // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error
-    parameter string IMEM_HEX_FILE = "UNSET.hex" // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error
+   parameter string IMEM_HEX_FILE = "UNSET.hex" // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error
 )(
     // input logic clk, // TODO unconnected for now but could be of use for future separation of fetch and decode logic
     // input logic rst, // TODO unconnected for now but could be of use for future separation of fetch and decode logic
@@ -164,7 +163,8 @@ module riscv_fetch_decode #(
     `ifdef FORMAL
         // imem left unconstrained for formal verification
     `else
-        initial $readmemh(IMEM_HEX_FILE, imem); // Reading the instructions from a hex file
+       initial $readmemh(IMEM_HEX_FILE, imem); // Reading the instructions from a hex file
+        // initial $readmemh("/home/vatistas/hdl_rampup/sv-learning/rtl/test_words.hex", imem); // Reading the instructions from a hex file
     `endif
 
 
@@ -173,6 +173,7 @@ module riscv_fetch_decode #(
 
 
     assign instr = imem[pc[15:2]]; // Word addressed imem and 32bit instructions. Not counting the 2 LSBs
+    // assign instr = imem[pc[15:2]]; // Word addressed imem and 32bit instructions. Not counting the 2 LSBs
     assign opcode = instr[6:0];
     assign func3 = instr[14:12];
     assign func7 = instr[31:25];

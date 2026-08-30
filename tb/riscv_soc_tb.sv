@@ -29,23 +29,23 @@ module riscv_soc_tb;
     localparam int HALT_THRESHOLD = 3;
     // change the values below per test
     localparam int unsigned EXPECTED_RESULT = 39600;  // matches telemetry[0]
-    localparam int telemetry_start = 32'h3eb0; // memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line
+    localparam int telemetry_start = 32'h3f40; // memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line
 
-    // TRACE DUMPING
-    integer rtl_trace_file;
-    logic [31:0] wb_pc_delayed_trace;
+    // // TRACE DUMPING
+    // integer rtl_trace_file;
+    // logic [31:0] wb_pc_delayed_trace;
 
-    initial begin
-        rtl_trace_file = $fopen("rtl_trace.log", "w");
-    end
+    // initial begin
+    //     rtl_trace_file = $fopen("rtl_trace.log", "w");
+    // end
 
-    always @(posedge clk) begin
-        wb_pc_delayed_trace <= dut.riscv_cpu_inst.wb_pc;
+    // always @(posedge clk) begin
+    //     wb_pc_delayed_trace <= dut.riscv_cpu_inst.wb_pc;
 
-        if (dut.riscv_cpu_inst.is_retired_inst_valid) begin
-            $fwrite(rtl_trace_file, "%h\n", wb_pc_delayed_trace);
-        end
-    end
+    //     if (dut.riscv_cpu_inst.is_retired_inst_valid) begin
+    //         $fwrite(rtl_trace_file, "%h\n", wb_pc_delayed_trace);
+    //     end
+    // end
 
 
 
@@ -90,20 +90,25 @@ module riscv_soc_tb;
 
                 // Shrinked the test size to 1200 (VALIDATION RUN) and the symbols'placement in memory changed. Now telementry spans 2 memory lines
                 automatic int unsigned iterations    = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][31:0];
-                automatic int unsigned total_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][63:32];
-                automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
-                automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
+                automatic int unsigned coremark_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][63:32];
+                automatic int unsigned total_instructions     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                automatic int unsigned total_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
+                // automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                // automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
 
 
                 $display("[%0t] Halt loop detected: PC stuck at %h", $time, wb_pc_delayed);                
                 // $display("Total_cycles=%0d, Total_instructions=%0d, IPC=%0.4f", cycles, instr, ipc);
 
 
-                $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
-                        iterations, total_cycles, crc_final, total_errors);
-                $display("IPC = %0.4f", real'(iterations) / real'(total_cycles));  // caution: see note below
+                // $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
+                //         iterations, coremark_cycles, crc_final, total_errors);
 
-                $fclose(rtl_trace_file);
+                $display("iterations=%0d, total_cycles=%0d, instructions=%0d, cycles=%0d",                        
+                        iterations, coremark_cycles, total_instructions, total_cycles);
+                $display("IPC = %0.4f", real'(total_instructions) / real'(total_cycles));  // caution: see note below
+
+                // $fclose(rtl_trace_file);
                 $finish;
             end
         end
@@ -133,9 +138,9 @@ module riscv_soc_tb;
         rst = 1'b0;
 
         // Wait enough cycles to see the output of the alu
-        repeat(999999999) @(posedge clk); #1;
+        // repeat(999999999) @(posedge clk); #1;
 
-        $finish;
+        // $finish;
     end
 
     // initial begin
