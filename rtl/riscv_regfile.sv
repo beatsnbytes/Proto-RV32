@@ -22,6 +22,7 @@ module riscv_regfile(
         rs2_data = (rs2_addr == 0) ? 0 : regs[rs2_addr];
     end
 
+
     // Write block
     always_ff @(posedge clk) begin
         if (rst) begin

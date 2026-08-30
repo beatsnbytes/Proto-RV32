@@ -4,7 +4,7 @@
 
 //TODO perform a general code refactoring. bundle logic together per stage pipeline registers and reorder module instationation, seq and comb blocks where needed
 module riscv_cpu #(
-    parameter string IMEM_HEX_FILE = "UNSET.hex"
+   parameter string IMEM_HEX_FILE = "UNSET.hex"
  )(
     input logic clk,
     input logic rst,
@@ -131,7 +131,7 @@ module riscv_cpu #(
     // Compute next pc
     always_ff @(posedge clk) begin
         if (rst) begin
-            pc <= 32'd0;                 
+            pc <= 32'd0;    
         end else if ( muldiv_busy || load_use_hzrd_bubble || mem_stall) begin // mem_stall wins everywhere. In the case of branch_taken alongside with mem_stall the latter will
                                                                               // win and the pc will "erroneously" show the wrong PC for the mem_stall duration. 
                                                                               // When it finalizes branch_taken will take over and put the jump pc here.
@@ -146,8 +146,6 @@ module riscv_cpu #(
     riscv_fetch_decode #(
         .IMEM_HEX_FILE(IMEM_HEX_FILE)
     )riscv_fetch_decode_inst(
-        .clk(clk),
-        .rst(rst),
         .pc(pc),
         .rs1_addr(rs1_addr),
         .rs2_addr(rs2_addr),
@@ -255,7 +253,6 @@ module riscv_cpu #(
         .rs1_addr(ex_rs1_addr),
         .rs2_addr(ex_rs2_addr),
         .pc(ex_pc),
-        .reg_wr_en(ex_reg_wr_en), // probably not used, prune it
         .use_imm(ex_use_imm),
         .exec_op(ex_exec_op),
         .imm(ex_imm),
@@ -285,14 +282,11 @@ module riscv_cpu #(
             mem_memory_to_reg <= 1'b0;  
             mem_rd_addr <= 5'b0;
             mem_reg_wr_en <= 1'b0; 
-            mem_csr_wr_data <= 32'b0;
-            mem_csr_wr_en <= 1'b0;
-            mem_csr_addr <= 12'b0;  
             mem_memory_write <= '0; 
             mem_memory_wr_data <= '0;
             mem_pc <= 32'b0;
             mem_is_jal <= 1'b0;
-            // mem_is_jalr <= 1'b0;
+            mem_is_jalr <= 1'b0;
             mem_func3 <= 3'b0;
         end else if (mem_stall) begin
             // FREEZE - hold current values - no assignment needed here
@@ -301,29 +295,23 @@ module riscv_cpu #(
             mem_memory_to_reg <= 1'b0;  
             mem_rd_addr <= 5'b0;
             mem_reg_wr_en <= 1'b0; 
-            mem_csr_wr_data <= 32'b0;
-            mem_csr_wr_en <= 1'b0;
-            mem_csr_addr <= 12'b0;  
             mem_memory_write <= '0; 
             mem_memory_wr_data <= '0;
             mem_pc <= 32'b0;
             mem_is_jal <= 1'b0;
-            // mem_is_jalr <= 1'b0;
+            mem_is_jalr <= 1'b0;
             mem_func3 <= 3'b0;
         end else begin
             mem_exec_result <= exec_result;
             mem_memory_to_reg <= ex_memory_to_reg;
             mem_rd_addr <= ex_rd_addr;
             mem_reg_wr_en <= ex_reg_wr_en;
-            mem_csr_wr_data <= csr_wr_data;
-            mem_csr_wr_en <= ex_csr_wr_en;
-            mem_csr_addr <= ex_csr_addr;
             mem_memory_write <= ex_memory_write; 
             mem_memory_read <= ex_memory_read; 
             mem_memory_wr_data <= memory_wr_data;
             mem_pc <= ex_pc;
             mem_is_jal <= ex_is_jal;
-            // mem_is_jalr <= ex_is_jalr;
+            mem_is_jalr <= ex_is_jalr;
             mem_func3 <= ex_func3;
         end
     end
@@ -333,7 +321,6 @@ module riscv_cpu #(
                     && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
     assign fwd_mem_rs2 = ( (mem_reg_wr_en && !mem_memory_to_reg) && (ex_rs2_addr == mem_rd_addr) 
                     && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
-
 
     // Following FSM model that takes care of the memory access (currently cache), design stall and the respective data transfers.
     typedef enum logic[1:0] {
@@ -439,28 +426,19 @@ logic busy;
             wb_memory_to_reg <= 1'b0;  
             wb_rd_addr <= 5'b0;
             wb_reg_wr_en <= 1'b0; 
-            wb_csr_wr_data <= 32'b0;
-            wb_csr_wr_en <= 1'b0;
-            wb_memory_write <= '0; 
-            wb_memory_wr_data <= '0;
             wb_memory_load_data <= 32'b0;
             wb_pc <= 32'b0;
             wb_is_jal <= 1'b0;
-            // wb_is_jalr <= 1'b0;
+            wb_is_jalr <= 1'b0;
         end else begin
             wb_exec_result <= mem_exec_result;
             wb_memory_to_reg <= mem_memory_to_reg;
             wb_rd_addr <= mem_rd_addr;
             wb_reg_wr_en <= mem_reg_wr_en;
-            wb_csr_wr_data <= mem_csr_wr_data;
-            wb_csr_wr_en <= mem_csr_wr_en;
-            // wb_csr_addr <= mem_csr_addr;
-            wb_memory_write <= mem_memory_write; 
-            wb_memory_wr_data <= mem_memory_wr_data;
             wb_memory_load_data <= memory_load_data;
             wb_pc <= mem_pc;
             wb_is_jal <= mem_is_jal;
-            // wb_is_jalr <= mem_is_jalr;
+            wb_is_jalr <= mem_is_jalr;
         end
     end
 
@@ -478,7 +456,7 @@ logic busy;
     always_comb begin : writeback_logic
         // Writeback MUX (Decide between JAL, ALU and memory results) 
         wb_return_address_data = wb_pc + 32'd4; //TODO maybe capture the normal PC+4 and carry it down here?
-        wb_data = wb_is_jal ? wb_return_address_data 
+        wb_data = (wb_is_jal || wb_is_jalr) ? wb_return_address_data 
                             : (wb_memory_to_reg ? wb_memory_load_data 
                             :  wb_exec_result); // In the case of jalr or nor jal and not memory to reg then we write back the execute stages result
 

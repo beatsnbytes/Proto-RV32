@@ -9,7 +9,7 @@ module riscv_execute (
     input logic [4:0] rs1_addr,
     input logic [4:0] rs2_addr,
     input logic [31:0] pc,
-    input logic reg_wr_en,
+    // input logic reg_wr_en,
     input logic use_imm,
     input logic [4:0] exec_op,
     input logic [31:0] imm,
@@ -163,9 +163,9 @@ module riscv_execute (
     always_comb begin : derive_div_control_signals
         rem_div_select = exec_op[1];
         is_signed_instr = exec_op[0];
-        // is_div_instr = is_muldiv_instr && exec_op[3];
         is_div_instr = (exec_op[4:3]==2'b11);
     end
+
 
     riscv_div riscv_div_inst(
         .clk(clk),

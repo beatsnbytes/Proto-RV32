@@ -126,11 +126,12 @@
 
 
 module riscv_fetch_decode #(
+//    parameter string IMEM_HEX_FILE = "UNSET.hex" // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error
     parameter string IMEM_HEX_FILE = "UNSET.hex" // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error
 )(
-    input logic clk,
-    input logic rst,
-    input logic [31:0] pc,
+    // input logic clk, // TODO unconnected for now but could be of use for future separation of fetch and decode logic
+    // input logic rst, // TODO unconnected for now but could be of use for future separation of fetch and decode logic
+    input logic [31:0] pc, 
     output logic [4:0] rs1_addr,
     output logic [4:0] rs2_addr,
     output logic [4:0] rd_addr,
@@ -156,6 +157,9 @@ module riscv_fetch_decode #(
 );
 
 //TODO Are any signals now irrelevant to be created here and we could derive them from the ex_op bits?
+    // logic [31:0] imem [4095:0]; // The 64KB memory
+    logic [31:0] imem [16383:0];
+    logic store_instr;
 
     `ifdef FORMAL
         // imem left unconstrained for formal verification
@@ -163,18 +167,19 @@ module riscv_fetch_decode #(
         initial $readmemh(IMEM_HEX_FILE, imem); // Reading the instructions from a hex file
     `endif
 
-    logic [31:0] imem [255:0]; // The 1KB instruction memory
+
     logic [6:0] opcode;
     logic [6:0] func7;
 
 
-    assign instr = imem[pc[9:2]];
+    assign instr = imem[pc[15:2]]; // Word addressed imem and 32bit instructions. Not counting the 2 LSBs
     assign opcode = instr[6:0];
     assign func3 = instr[14:12];
     assign func7 = instr[31:25];
     assign rs1_addr = instr[19:15];
     assign rs2_addr = instr[24:20];
-    assign rd_addr = instr[11:7];
+    // assign rd_addr = instr[11:7];
+    assign rd_addr = (branch_instr || store_instr) ? 5'b0 : instr[11:7];
 
     always_comb begin
 
@@ -184,15 +189,15 @@ module riscv_fetch_decode #(
         use_imm = 1'b0; // Get value from rs2
         branch_instr = 1'b0;
         // Default signals for data memory
+        store_instr = 1'b0;
         memory_read = 1'b0;
         memory_write = 1'b0;
         memory_to_reg = 1'b0;
         // Default signals for CSR
         csr_addr = 12'b0;
         is_csr = 1'b0;
-        // csr_rd_en  = 1'b0;
         csr_wr_en = 1'b0;
-        // csr_rw = 1'b0;
+        csr_op = 2'b0;
         // JAL signals
         is_jal = 1'b0;
         is_jalr = 1'b0;
@@ -289,6 +294,7 @@ module riscv_fetch_decode #(
             // -- SW
             7'b0100011 : begin
                 memory_write = 1'b1;
+                store_instr = 1'b1;
                 imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};
                 use_imm = 1'b1;
                 exec_op = 5'b00001; // Use the ADD to compute the address (known at EX stage)
@@ -302,34 +308,6 @@ module riscv_fetch_decode #(
                 csr_wr_en = ~((func3[1]==1'b1) && ((imm==32'b0) || (rs1_addr==5'b0))); // The csr_wr_en is 1 except when the clear/set have imm or rs1 ==0.              
                 imm = {{27{instr[19]}}, instr[19:15]};
                 use_imm = (func3[2]==1'b1);
-                // case(func3) //TODO verify it works!
-                //     3'b001: begin //  CSRRW  csr read/write
-                //         csr_wr_en = 1'b1;
-                //     end 
-                //     3'b010: begin //  CSRRS csr read/set (OR)
-                //         csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0)); // The csr_wr_en is 1 except when the clear/set have imm or rs1 ==0.
-                //     end 
-                //     3'b011: begin //  CSRRC csr read/clear (AND ~)
-                //         csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
-                //     end 
-                //     3'b101: begin //  CSRRWI csr read/write imm
-                //         use_imm = 1'b1;
-                //         imm = {{27{instr[19]}}, instr[19:15]};
-                //         csr_wr_en = 1'b1;
-                //     end 
-                //     3'b110: begin //  CSRRSI csr read/set imm
-                //         use_imm = 1'b1;
-                //         imm = {{27{instr[19]}}, instr[19:15]};
-                //         csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
-                //     end 
-                //     3'b111: begin //  CSRRCI csr read/clear imm
-                //         use_imm = 1'b1;
-                //         imm = {{27{instr[19]}}, instr[19:15]};
-                //         csr_wr_en = ~((imm==32'b0) || (rs1_addr==5'b0));
-                //     end 
-                //     default:;
-                // endcase
-
             end
             7'b0110111: begin // LUI
                 imm = {{12{instr[31]}}, instr[31:12]};
