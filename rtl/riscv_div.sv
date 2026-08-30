@@ -66,7 +66,7 @@ module riscv_div (
             IDLE: next_state = is_div_instr ? COMPUTE : IDLE;
             COMPUTE: next_state = (iters_done || is_special_case) ? DONE : COMPUTE;
             DONE: next_state = IDLE;
-            default:;
+            default: next_state = IDLE;
         endcase
     end
 
@@ -84,14 +84,14 @@ module riscv_div (
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            dividend_input_latched <= 32'b0;
+//            dividend_input_latched <= 32'b0;
             divisor_input_latched <= 32'b0;
             rem_div_select_latched <= 1'b0;
             counter <= 5'b0;
             remainder_quotient_combined_reg <= 65'b0;
         end else begin
             if (is_div_instr && (current_state == IDLE)) begin
-                dividend_input_latched <= dividend_input;
+//                dividend_input_latched <= dividend_input;
                 dividend_unchanged_latched <= dividend; // For the special case od div by zero where the rem wants the dividend (unchanged!)
                 dividend_sign_latched <= dividend_sign; // Latch the sign in any case for it may be needed to be used later
                 divisor_input_latched <= divisor_input;

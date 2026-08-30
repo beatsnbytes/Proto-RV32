@@ -1,11 +1,11 @@
 /* linker.ld
  * Minimal bare-metal linker script for the custom RV32IM core.
- * Matches main_memory.sv: single RAM region, 0x00000000 - 0x00003FFF (16KB).
+ * Matches main_memory.sv: single RAM region, 0x00000000 - 0x0000FFFF (64KB).
  */
 
 MEMORY
 {
-    RAM (rwx) : ORIGIN = 0x00000000, LENGTH = 16K
+    RAM (rwx) : ORIGIN = 0x00000000, LENGTH = 64K
 }
 
 ENTRY(_start)
@@ -42,10 +42,11 @@ SECTIONS
         _bss_end = .;
     } > RAM
 
-    _telemetry_start = ALIGN(4);  /* placed after .bss in the SECTIONS block, before _stack_top */
+    _telemetry_start = ALIGN(16);  /* placed after .bss in the SECTIONS block, before _stack_top */
 
     _heap_start = ALIGN(4);
     _stack_top  = ORIGIN(RAM) + LENGTH(RAM);
 
+    ASSERT(_telemetry_start + 16 <= ORIGIN(RAM) + LENGTH(RAM), "Error: program + telemetry exceeds RAM size")
     ASSERT(_stack_top <= ORIGIN(RAM) + LENGTH(RAM), "Error: memory image exceeds RAM size")
 }

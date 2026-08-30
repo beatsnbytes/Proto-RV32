@@ -10,8 +10,10 @@ module riscv_soc_tb;
     logic zero;
 
     riscv_soc #(
-        .IMEM_HEX_FILE("../sw/bringup/build/assembly_instruction_words.hex"),  // pass through to riscv_dfetch, assuming riscv_soc forwards this parameter down
-        .DMEM_HEX_FILE("../sw/bringup/build/assembly_instruction_lines.hex")  // pass through to main_memory
+        .IMEM_HEX_FILE("../sw/bringup/build/coremark_words.hex"),  // pass through to riscv_dfetch, assuming riscv_soc forwards this parameter down
+        .DMEM_HEX_FILE("../sw/bringup/build/coremark_lines.hex")  // pass through to main_memory
+        // .IMEM_HEX_FILE("../sw/bringup/build/custom_c_words.hex"),  // pass through to riscv_dfetch, assuming riscv_soc forwards this parameter down
+        // .DMEM_HEX_FILE("../sw/bringup/build/custom_c_lines.hex")  // pass through to main_memory        
     )dut(
     .clk(clk),
     .rst(rst)
@@ -23,7 +25,29 @@ module riscv_soc_tb;
     // --- Program-completion / hang detection ---
     logic [31:0] prev_pc, wb_pc_delayed;
     int repeat_count;
-    localparam int HALT_THRESHOLD = 5;
+    logic [31:0] cycle_count;
+    localparam int HALT_THRESHOLD = 3;
+    // change the values below per test
+    localparam int unsigned EXPECTED_RESULT = 39600;  // matches telemetry[0]
+    localparam int telemetry_start = 32'h3eb0; // memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line
+
+    // TRACE DUMPING
+    integer rtl_trace_file;
+    logic [31:0] wb_pc_delayed_trace;
+
+    initial begin
+        rtl_trace_file = $fopen("rtl_trace.log", "w");
+    end
+
+    always @(posedge clk) begin
+        wb_pc_delayed_trace <= dut.riscv_cpu_inst.wb_pc;
+
+        if (dut.riscv_cpu_inst.is_retired_inst_valid) begin
+            $fwrite(rtl_trace_file, "%h\n", wb_pc_delayed_trace);
+        end
+    end
+
+
 
 
     always @(posedge clk) begin
@@ -33,7 +57,9 @@ module riscv_soc_tb;
         if (rst) begin
             prev_pc      <= 32'hFFFF_FFFF;  // force mismatch right after reset
             repeat_count <= 0;
+            cycle_count <= '0;
         end else begin
+            cycle_count <= cycle_count + 1;
             if (dut.riscv_cpu_inst.is_retired_inst_valid) begin
                 if (prev_pc == wb_pc_delayed) begin
                     repeat_count <= repeat_count + 1;
@@ -44,38 +70,62 @@ module riscv_soc_tb;
             if (repeat_count > HALT_THRESHOLD) begin
                 // Compute the line + word-within-line for each address, matching
                 // the packing bin2hex.py used (word0 = lowest bits of the 128-bit line)
-                automatic int cache_line_cycles = 32'h188 >> 4; // chooses main memory line
-                automatic int cache_word_cycles = (32'h188 >> 2) & 32'h3; // chooses word in main memory line
-                automatic int cache_line_instr = 32'h18c >> 4;
-                automatic int cache_word_instr = (32'h18c >> 2) & 32'h3;
+                automatic int telemetry_results_memory_line = telemetry_start >> 4;
 
-                automatic int unsigned cycles  = dut.main_memory_inst.backing_mem[cache_line_cycles][cache_word_cycles*32 +: 32];
-                automatic int unsigned instret = dut.main_memory_inst.backing_mem[cache_line_instr][cache_word_instr*32 +: 32];
+                // automatic int unsigned result     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][31:0];
+                // automatic int unsigned instr     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][63:32];
+                // automatic int unsigned cycles    = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                // automatic real ipc = real'(instr) / real'(cycles);
 
-                $display("[%0t] Halt loop detected: PC stuck at %h", $time, wb_pc_delayed);
-                $display("cycles = %0d, instret = %0d, IPC = %0.4f",
-                        cycles, instret, real'(instret) / real'(cycles));
+                // if (result == EXPECTED_RESULT) begin
+                //     $display(">>> PASS: result matches expected value (%0d)", EXPECTED_RESULT);
+                // end else begin
+                //     $display(">>> FAIL: result=%0d does not match expected=%0d", result, EXPECTED_RESULT);
+                // end
+
+
+
+
+                // COREMARK RELATED PRINTING
+
+                // Shrinked the test size to 1200 (VALIDATION RUN) and the symbols'placement in memory changed. Now telementry spans 2 memory lines
+                automatic int unsigned iterations    = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][31:0];
+                automatic int unsigned total_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][63:32];
+                automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
+
+
+                $display("[%0t] Halt loop detected: PC stuck at %h", $time, wb_pc_delayed);                
+                // $display("Total_cycles=%0d, Total_instructions=%0d, IPC=%0.4f", cycles, instr, ipc);
+
+
+                $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
+                        iterations, total_cycles, crc_final, total_errors);
+                $display("IPC = %0.4f", real'(iterations) / real'(total_cycles));  // caution: see note below
+
+                $fclose(rtl_trace_file);
                 $finish;
             end
         end
-        // $display("[%0t] pc=%h, ra=%h, sp=%h, repeat_count=%0d",
-        //   $time,
-        //   dut.riscv_cpu_inst.wb_pc, 
-        //   dut.riscv_cpu_inst.riscv_execute_inst.riscv_regfile_inst.regs[1], // x1=ra
-        //   dut.riscv_cpu_inst.riscv_execute_inst.riscv_regfile_inst.regs[2], // x2=sp
-        //   repeat_count
-        //   );
+    end
+
+    // Periodical printing (COREMARK)
+    always @(posedge clk) begin
+        if (!rst && (cycle_count % 10_000_000 == 0)) begin
+            automatic real ipc = real'(dut.riscv_cpu_inst.riscv_execute_inst.riscv_csr_inst.minstret) / real'(cycle_count);
+            $display("[%0t] progress: %0d cycles, pc=%h, IPC=%0.4f",
+                    $time, cycle_count, dut.riscv_cpu_inst.pc,
+                    ipc);
+        end
     end
 
 
 
 
 
-
-
     initial begin
-        $dumpfile("../sim/riscv_soc_tb.vcd");
-        $dumpvars(0, riscv_soc_tb);
+        // $dumpfile("../sim/riscv_soc_tb.vcd");
+        // $dumpvars(0, riscv_soc_tb);
 
         // Reset for 2 cycles
         rst = 1'b1;
@@ -83,7 +133,7 @@ module riscv_soc_tb;
         rst = 1'b0;
 
         // Wait enough cycles to see the output of the alu
-        repeat(100000) @(posedge clk); #1;
+        repeat(999999999) @(posedge clk); #1;
 
         $finish;
     end

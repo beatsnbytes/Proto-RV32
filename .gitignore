@@ -2,7 +2,7 @@
 obj_dir/
 
 # Auxiliary documents
-docs/claude_aux/
+docs/*
 
 # Simulation artifacts
 sim/*.vcd
@@ -38,3 +38,6 @@ synth/
 # Build folder in sw bringup
 sw/bringup/build
 
+# Logs of RTL and Spike
+scripts/*.log
+sw/bringup/build/*.log

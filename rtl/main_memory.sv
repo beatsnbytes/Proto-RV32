@@ -19,7 +19,7 @@
     );
     
     localparam int ADDR_WIDTH = 32;
-    localparam int MEM_LINES = 1024; // Addresses ranging from 0x0000_0000 to 0x0000_3FFF 1KB
+    localparam int MEM_LINES = 4096; //64KB Addresses ranging from 0x0000_0000 to 0x0000_FFFF 64KB  - Older version: Addresses ranging from 0x0000_0000 to 0x0000_3FFF 16KB
     localparam int MEM_DEPTH = $clog2(MEM_LINES) + 4; // Adding the last 4 bits which are dedicated to offset
     localparam int MEM_WORDS = MEM_LINES * 4;
     localparam int SHADOW_MEM_DEPTH = $clog2(MEM_WORDS) + 2;
@@ -37,8 +37,7 @@
     initial $readmemh(DMEM_HEX_FILE, backing_mem);
     `endif
     
-
-
+    logic [31:0] mem_addr_offset, base_offset;
 
     // Golden model for main memory behavior
     initial begin
@@ -59,9 +58,8 @@
 
                 end else begin
                     base = mem_addr;
-                    read_latency = $urandom_range(2, 10);  // pick your min/max
-                    repeat(read_latency) @(posedge clk); #1;
-                    // repeat(5) @(posedge clk); #1;
+                    // read_latency = $urandom_range(2, 10);  // pick your min/max
+                    // repeat(read_latency) @(posedge clk); #1;
                     mem_resp_data = backing_mem[base[(MEM_DEPTH-1):4]];
                     mem_resp_valid = 1'b1;
                     do begin
