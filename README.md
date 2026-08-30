@@ -1,15 +1,17 @@
-# RISC-V RTL Learning Portfolio
+# ProtoCore — RISC-V RTL Learning Portfolio
 
-A structured, week-by-week SystemVerilog design and verification portfolio — from basic gates to a pipelined RISC-V CPU running real compiled software, verified against a golden reference model, and synthesized on real FPGA fabric.
+*From the Greek "πρώτο" (próto) — first.*
+
+A free-time side project exploring digital design and verification in SystemVerilog — going wherever it leads, down whatever challenging paths turn up along the way. Centered on ProtoCore, a pipelined RISC-V CPU now running real compiled software, verified against a golden reference model, and synthesized on real FPGA fabric.
 
 **Author:** Vatistas Kostalabros
-**Goal:** Systematic ramp-up from RTL fundamentals to production-grade digital design and verification techniques targeting RISC-V and high-performance computing.
+**Goal:** No fixed goal, really — just going deeper into digital design and verification, RISC-V and beyond, wherever the interesting problems are.
 
 ---
 
 ## What's Inside
 
-### RISC-V CPU Pipeline
+### RISC-V CPU Pipeline — ProtoCore
 A fully functional 5-stage pipelined RISC-V CPU implementing the RV32IM ISA, with the Zicsr extension:
 - **IF/ID → EX → MEM → WB** pipeline with pipeline registers
 - **Forwarding unit** — resolves RAW hazards without stalling
@@ -55,15 +57,16 @@ A fully functional 5-stage pipelined RISC-V CPU implementing the RV32IM ISA, wit
 ## CoreMark Result
 
 ```
-iterations=100, TOTAL_DATA_SIZE=2000 (standard config, all algorithms)
-total_cycles=552,259,975
+iterations=300, TOTAL_DATA_SIZE=2000 (standard config, all algorithms)
+total_cycles=1,654,716,380
+instructions=354,535,687
 crc=0x988c
 total_errors=0
 ```
 
 At an assumed 100MHz target clock: **~0.181 CoreMark/MHz**. Modest relative to typical published RV32IM cores (2–3+ CoreMark/MHz) — expected for a straightforward single-issue in-order pipeline with a correctness-first multiplier/divider, not yet tuned for throughput. The value of this number is that it is real, lockstep-verified, and trustworthy.
 
-Measured IPC on this workload: **~0.214** (11,817,617 instructions retired / 55,157,060 cycles, ITERATIONS=10 run), cross-checked against CoreMark's own internally-reported cycle count (55,156,850 — matches within 210 cycles, the small window difference between CoreMark's own timing calls and the wrapping telemetry measurement).
+Measured IPC on this workload: **0.2143**. Confirmed stable across three independent runs spanning a 30x range in scale — 10, 100, and 300 iterations gave 5,515,706, 5,515,762, and 5,515,721 cycles/iteration respectively (all within ~0.001% of each other) and identical 0.2143 IPC every time, ruling out per-iteration drift or accumulating measurement error. Also cross-checked against CoreMark's own internally-reported cycle count, which matches within a few hundred cycles (the small window difference between CoreMark's own timing calls and the wrapping telemetry measurement).
 
 ---
 
@@ -223,38 +226,6 @@ openroad alu_floorplan.tcl
 ```
 
 **Result:** ALU critical path 4.91ns → ~200MHz achievable frequency on sky130hs. Critical path identified through ripple-carry adder chain — architectural fix: carry-lookahead adder.
-
----
-
-## Weekly Progress
-
-| Week | Topic | Status |
-|------|-------|--------|
-| 1–3 | AND gate through counter | ✓ |
-| 4 | FSMs | ✓ |
-| 5 | Parameterized FIFO | ✓ |
-| 6 | Constrained random verification | ✓ |
-| 7 | SVA assertions + bind | ✓ |
-| 8 | Full UVM environment | ✓ |
-| 9 | AXI4-Lite slave | ✓ |
-| 10–12 | RISC-V CPU — ALU, regfile, fetch/decode, execute, pipeline, forwarding, branch flushing | ✓ |
-| 13 | RV32M multiplier with stall unit | ✓ |
-| 14 | CSR registers + exception groundwork | ✓ |
-| 15 | Formal verification suite | ✓ |
-| 16 | SPI master + UART TX | ✓ |
-| 17 | Matrix multiply accelerator | ✓ |
-| 18 | AXI4-Lite wrapper for accelerator | ✓ |
-| 19 | OpenROAD synthesis + timing analysis (ALU) | ✓ |
-| 20 | Sub-word loads/stores, write-back cache eviction verification | ✓ |
-| 21 | Full RV32IM base complete (all instructions verified through cache/memory hierarchy) | ✓ |
-| 22 | Bare-metal toolchain, linker scripts, Spike bring-up | ✓ |
-| 23 | Divide unit (DIV/DIVU/REM/REMU) | ✓ |
-| 24 | CoreMark port, Spike lockstep co-simulation, two real bugs found and fixed | ✓ |
-| 25 | Vivado synthesis + implementation + timing closure (CPU pipeline) | ✓ |
-| 26 | Cache flush instruction / mechanism | Planned |
-| 27 | SVA assertions targeting priority/decode-class bugs found via lockstep | Planned |
-| 28 | Branch prediction (2-bit saturating counter / BTB) | Planned |
-| 29 | CDC / Async FIFO | Planned |
 
 ---
 
