@@ -8,16 +8,16 @@ module riscv_cpu #(
  )(
     input logic clk,
     input logic rst,
-    //CPU-to-Cache connection
-    output logic cpu_req_write, // Read = 0, Write = 1
-    output logic cpu_req_valid, 
-    input logic cpu_req_ready,
-    output logic [31 : 0] cpu_addr,
-    output logic [31 : 0] cpu_wdata,
-    output logic [3:0] cpu_wmask,
-    input logic [31 : 0] cpu_resp_data,
-    input logic cpu_resp_valid,
-    output logic cpu_resp_ready
+     //CPU-to-Cache connection
+     output logic cpu_req_write, // Read = 0, Write = 1
+     output logic cpu_req_valid, 
+     input logic cpu_req_ready,
+     output logic [31 : 0] cpu_addr,
+     output logic [31 : 0] cpu_wdata,
+     output logic [3:0] cpu_wmask,
+     input logic [31 : 0] cpu_resp_data,
+     input logic cpu_resp_valid,
+     output logic cpu_resp_ready
 );
 
     logic [4:0] rs1_addr, rs2_addr, rd_addr;
