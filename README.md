@@ -1,4 +1,4 @@
-# ProtoCore — RISC-V RTL Learning Portfolio
+# ProtoCore — RISC-V 32IM Core Portfolio
 
 *From the Greek "πρώτο" (próto) — first.*
 
