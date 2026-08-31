@@ -10,6 +10,8 @@ module riscv_cpu #(
     input logic rst,
      //CPU-to-Cache connection
      output logic cpu_req_write, // Read = 0, Write = 1
+     output logic cpu_req_flush,
+     output logic [2:0] flush_mode, // TODO just 2 modes 010 and 011 but keeping all 3 bits for possible future corrections
      output logic cpu_req_valid, 
      input logic cpu_req_ready,
      output logic [31 : 0] cpu_addr,
@@ -28,7 +30,7 @@ module riscv_cpu #(
     logic use_imm;
     logic branch_taken;
     logic [2:0] func3;
-    logic branch_instr;
+    logic is_branch;
 
     logic memory_read, memory_write, memory_to_reg;
     logic [31:0] dmem [255:0]; // 1KB data memory
@@ -47,7 +49,7 @@ module riscv_cpu #(
     logic ex_memory_read;
     logic ex_memory_write;
     logic ex_memory_to_reg;
-    logic ex_branch_instr;
+    logic ex_is_branch;
     logic [2:0] ex_func3;
     logic [31:0] ex_pc;
     logic [31:0] pc;
@@ -85,7 +87,6 @@ module riscv_cpu #(
     logic [31:0] mem_csr_wr_data;
     logic csr_rd_en;
     logic [1:0] csr_op, ex_csr_op;
-    // logic ex_csr_rd_en;
     logic csr_rw;
     logic ex_csr_rw;
     logic csr_wr_en;
@@ -108,6 +109,8 @@ module riscv_cpu #(
     logic is_load_word, is_load_half_word, is_load_byte, is_load_signed;
     logic [3:0] write_mask;
     logic [31:0] sized_load_data;
+    logic [4:0] mem_exec_op;
+    logic is_flush, ex_is_flush, mem_is_flush; // TODO maybe adopt this style on declaring all together rather than stage-by-stage
 
     // WB pipeline registers
     logic [31:0] wb_exec_result;
@@ -155,11 +158,12 @@ module riscv_cpu #(
         .reg_wr_en(reg_wr_en),
         .instr(instr),
         .use_imm(use_imm),
-        .branch_instr(branch_instr),
+        .is_branch(is_branch),
         .func3(func3),
         .memory_read(memory_read),
         .memory_write(memory_write),
         .memory_to_reg(memory_to_reg),
+        .is_flush(is_flush),
         .is_jal(is_jal), // Signal that selects to writeback/forward PC+4 
         .is_jalr(is_jalr), // Signal that selects to writeback/forward PC+4 
         .csr_addr(csr_addr), // To csr regfile 
@@ -182,7 +186,7 @@ module riscv_cpu #(
             ex_memory_read <= 1'b0;
             ex_memory_write  <= 1'b0;
             ex_memory_to_reg <= 1'b0;
-            ex_branch_instr <= 1'b0;
+            ex_is_branch <= 1'b0;
             ex_func3 <= 3'b0;
             ex_csr_addr <= 12'b0;
             ex_is_csr <= 1'b0;
@@ -191,6 +195,7 @@ module riscv_cpu #(
             ex_pc <= 32'b0;
             ex_is_jal <= 1'b0;
             ex_is_jalr <= 1'b0;
+            ex_is_flush <= 1'b0;
         end else if (mem_stall || muldiv_busy) begin
             // FREEZE - hold current values - no assignment needed here 
         end else if (load_use_hzrd_bubble || branch_taken) begin // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
@@ -204,7 +209,7 @@ module riscv_cpu #(
             ex_memory_read <= 1'b0;
             ex_memory_write  <= 1'b0;
             ex_memory_to_reg <= 1'b0;
-            ex_branch_instr <= 1'b0;
+            ex_is_branch <= 1'b0;
             ex_func3 <= 3'b0; 
             ex_csr_addr <= 12'b0;
             ex_is_csr <= 1'b0;
@@ -213,6 +218,7 @@ module riscv_cpu #(
             ex_pc <= 32'b0;
             ex_is_jal <= 1'b0;
             ex_is_jalr <= 1'b0;
+            ex_is_flush <= 1'b0;
         end else begin
             ex_rs1_addr <= rs1_addr;
             ex_rs2_addr <= rs2_addr;
@@ -224,7 +230,7 @@ module riscv_cpu #(
             ex_memory_read <= memory_read;
             ex_memory_write  <= memory_write;
             ex_memory_to_reg <= memory_to_reg;
-            ex_branch_instr <= branch_instr;
+            ex_is_branch <= is_branch;
             ex_func3 <= func3;
             ex_pc <= pc;
             ex_csr_addr <= csr_addr; // 4 bits enough for 16 CSR registers
@@ -233,6 +239,7 @@ module riscv_cpu #(
             ex_csr_op <= csr_op;
             ex_is_jal <= is_jal;
             ex_is_jalr <= is_jalr;
+            ex_is_flush <= is_flush;
         end
     end
 
@@ -240,12 +247,12 @@ module riscv_cpu #(
         target_pc = ex_is_jalr ? (exec_result & ~(32'b1)) : (ex_pc + ex_imm); // Select between (ex_pc + ex_imm) and (rs1 + imm) & ~1 coming from the ALU in the case of JALR
         condition_needs_zero = ((ex_func3==3'b000) || (ex_func3==3'b101) || (ex_func3==3'b111));
         condition_not_needs_zero = ((ex_func3==3'b001) || (ex_func3==3'b100) || (ex_func3==3'b110));
-        branch_taken = ex_is_jal || ex_is_jalr || (ex_branch_instr && ((condition_needs_zero && zero) || (condition_not_needs_zero && !zero)));
+        branch_taken = ex_is_jal || ex_is_jalr || (ex_is_branch && ((condition_needs_zero && zero) || (condition_not_needs_zero && !zero)));
     end
 
 
     // Theoretically it will persist only for 1cc since when the NOPped ex register will flood EX stage then ex_memory_read=0 and load_bubble=0
-    assign load_use_hzrd_bubble = ex_memory_read && ((ex_rd_addr == rs1_addr) && (ex_rd_addr != 5'd0) || (ex_rd_addr == rs2_addr) && (ex_rd_addr != 5'd0)); // Insert an 1cc bubble if current instruction in execute is LOAD and the next instruction is dependent.
+    assign load_use_hzrd_bubble = (ex_memory_read) && ((ex_rd_addr == rs1_addr) && (ex_rd_addr != 5'd0) || (ex_rd_addr == rs2_addr) && (ex_rd_addr != 5'd0)); // Insert an 1cc bubble if current instruction in execute is LOAD and the next instruction is dependent.
 
     riscv_execute riscv_execute_inst (
         .clk(clk),
@@ -279,6 +286,7 @@ module riscv_cpu #(
     always_ff @(posedge clk) begin
         if (rst) begin
             mem_exec_result <= 32'b0;
+            mem_exec_op <= 5'b0;
             mem_memory_to_reg <= 1'b0;  
             mem_rd_addr <= 5'b0;
             mem_reg_wr_en <= 1'b0; 
@@ -288,10 +296,12 @@ module riscv_cpu #(
             mem_is_jal <= 1'b0;
             mem_is_jalr <= 1'b0;
             mem_func3 <= 3'b0;
+            mem_is_flush <= 1'b0;
         end else if (mem_stall) begin
             // FREEZE - hold current values - no assignment needed here
         end else if (muldiv_busy) begin
             mem_exec_result <= 32'b0;
+            mem_exec_op <= 5'b0;
             mem_memory_to_reg <= 1'b0;  
             mem_rd_addr <= 5'b0;
             mem_reg_wr_en <= 1'b0; 
@@ -301,8 +311,10 @@ module riscv_cpu #(
             mem_is_jal <= 1'b0;
             mem_is_jalr <= 1'b0;
             mem_func3 <= 3'b0;
+            mem_is_flush <= 1'b0;
         end else begin
             mem_exec_result <= exec_result;
+            mem_exec_op <= ex_exec_op;
             mem_memory_to_reg <= ex_memory_to_reg;
             mem_rd_addr <= ex_rd_addr;
             mem_reg_wr_en <= ex_reg_wr_en;
@@ -313,6 +325,7 @@ module riscv_cpu #(
             mem_is_jal <= ex_is_jal;
             mem_is_jalr <= ex_is_jalr;
             mem_func3 <= ex_func3;
+            mem_is_flush <= ex_is_flush;
         end
     end
 
@@ -321,6 +334,7 @@ module riscv_cpu #(
                     && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
     assign fwd_mem_rs2 = ( (mem_reg_wr_en && !mem_memory_to_reg) && (ex_rs2_addr == mem_rd_addr) 
                     && (mem_rd_addr != 5'b0)) ? 1'b1 : 1'b0;
+
 
     // Following FSM model that takes care of the memory access (currently cache), design stall and the respective data transfers.
     typedef enum logic[1:0] {
@@ -343,7 +357,7 @@ module riscv_cpu #(
     // Next state logic
     always_comb begin
         case(current_state)
-            IDLE: next_state = (mem_memory_read || mem_memory_write) ? MEM_SEND_REQUEST : IDLE;
+            IDLE: next_state = (mem_memory_read || mem_memory_write || mem_is_flush) ? MEM_SEND_REQUEST : IDLE;
             MEM_SEND_REQUEST: next_state = cpu_req_ready ? MEM_WAIT_RESPONSE : MEM_SEND_REQUEST;
             MEM_WAIT_RESPONSE: next_state = cpu_resp_valid ? IDLE : MEM_WAIT_RESPONSE;
             default: next_state = IDLE;
@@ -359,6 +373,8 @@ logic busy;
         cpu_wdata = 32'b0;
         cpu_wmask = 4'b0;
         cpu_resp_ready = 1'b0;
+        cpu_req_flush = 1'b0;
+        flush_mode = 3'b0;
         case(current_state)
             MEM_SEND_REQUEST: begin
                 cpu_req_valid = 1'b1;
@@ -366,6 +382,8 @@ logic busy;
                 cpu_addr = mem_exec_result; // In the case of a memory instruction the computed adress comes from the output of the ALU
                 cpu_wdata = mem_memory_wr_data;
                 cpu_wmask = write_mask;
+                cpu_req_flush = mem_is_flush;
+                flush_mode = mem_func3; // 010 = single address, 011 = entire cache
             end
             MEM_WAIT_RESPONSE: begin
                 cpu_resp_ready = 1'b1;
@@ -416,7 +434,7 @@ logic busy;
         end
     end
 
-    assign mem_stall = (mem_memory_read || mem_memory_write) && !(cpu_resp_ready && cpu_resp_valid); // Safe only while cache handshake outputs are registered/glitch-free (Moore)
+    assign mem_stall = (mem_memory_read || mem_memory_write || mem_is_flush) && !(cpu_resp_ready && cpu_resp_valid); // Safe only while cache handshake outputs are registered/glitch-free (Moore)
     assign memory_load_data = (cpu_resp_ready && cpu_resp_valid) ? sized_load_data : 32'b0;
 
     // MEM/WB pipeline register

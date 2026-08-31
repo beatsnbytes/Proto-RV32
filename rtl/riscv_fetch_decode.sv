@@ -79,6 +79,9 @@
 //  CSRRSI  I  op=1110011  f3=110  f7=-        // csr read/set imm
 //  CSRRCI  I  op=1110011  f3=111  f7=-        // csr read/clear imm
 //
+// -------- Cache Flush custom_0 --------
+// CACHE_FLUSH address     op=0001011 f3=010 f7=- // Flush a specific address (rs1 + imm)
+// CACHE_FLUSH whole_cache op=0001011 f3=011 f7=- // Flush the whole cache
 
 // =====================================================================
 // exec_op ASSIGNMENT WORKSHEET  (5-bit exec_op = 5'bxxxxx)
@@ -120,6 +123,11 @@
 // -- special --
 //  NOP/BUBBLE        (flush/stall inserts this)        5'b00000   inert: no wr, no stall, no unit
 //
+// -- FLUSH family (bit[4]=1 multi-cycle instr) --
+//  CACHE_FLUSH       FLUSH                             No explicit exec_op   cache flush 
+//
+// ========================================================================
+//
 // NOTE: branches, loads/stores, jumps, CSR plumbing are routed by
 //       OPCODE + dedicated control signals — NOT by exec_op.
 //       exec_op only names the FUNCTIONAL-UNIT OPERATION.
@@ -139,12 +147,13 @@ module riscv_fetch_decode #(
     output logic reg_wr_en,
     output logic [31:0] instr,
     output logic use_imm, // 0 = use rs2, 1 use imm
-    output logic branch_instr,
+    output logic is_branch,
     output logic [2:0] func3,
     // Output signals from LW/SW instr
     output logic memory_read, 
     output logic memory_write,
     output logic memory_to_reg, // Writeback mux 0 = ALU_RESULT, 1 = memory data
+    output logic is_flush,
     // Output signals from JAL/JALR instructions
     output logic is_jal,
     output logic is_jalr,
@@ -158,7 +167,7 @@ module riscv_fetch_decode #(
 //TODO Are any signals now irrelevant to be created here and we could derive them from the ex_op bits?
     // logic [31:0] imem [4095:0]; // The 64KB memory
     logic [31:0] imem [16383:0];
-    logic store_instr;
+    logic is_store; // TODO maybe thats redundant since I got memory_write already
 
     `ifdef FORMAL
         // imem left unconstrained for formal verification
@@ -173,14 +182,12 @@ module riscv_fetch_decode #(
 
 
     assign instr = imem[pc[15:2]]; // Word addressed imem and 32bit instructions. Not counting the 2 LSBs
-    // assign instr = imem[pc[15:2]]; // Word addressed imem and 32bit instructions. Not counting the 2 LSBs
     assign opcode = instr[6:0];
     assign func3 = instr[14:12];
     assign func7 = instr[31:25];
     assign rs1_addr = instr[19:15];
     assign rs2_addr = instr[24:20];
-    // assign rd_addr = instr[11:7];
-    assign rd_addr = (branch_instr || store_instr) ? 5'b0 : instr[11:7];
+    assign rd_addr = (is_branch || is_store || is_flush) ? 5'b0 : instr[11:7];
 
     always_comb begin
 
@@ -188,10 +195,10 @@ module riscv_fetch_decode #(
         reg_wr_en = 1'b0;
         imm = 32'b0;
         use_imm = 1'b0; // Get value from rs2
-        branch_instr = 1'b0;
+        is_branch = 1'b0;
         // Default signals for data memory
-        store_instr = 1'b0;
-        memory_read = 1'b0;
+        is_store = 1'b0;
+        memory_read = 1'b0; // TODO since the opcodes are distinguishing between those and they are passed down the pipeline I can use this instead of dedicated is_* signals
         memory_write = 1'b0;
         memory_to_reg = 1'b0;
         // Default signals for CSR
@@ -202,6 +209,8 @@ module riscv_fetch_decode #(
         // JAL signals
         is_jal = 1'b0;
         is_jalr = 1'b0;
+        // FLUSH signals
+        is_flush = 1'b0;
         case (opcode) 
             7'b0110011 : begin
                 // R-type ALU, M-extension
@@ -272,7 +281,7 @@ module riscv_fetch_decode #(
             // func3 = 3'b000 is BEQ and func3 = 3'b001 is BNE
             7'b1100011 : begin
                 imm = { {20{instr[31]}}, instr[7], instr[30:25], instr[11:8], 1'b0};
-                branch_instr = 1'b1;
+                is_branch = 1'b1;
                 case(func3)
                     3'b000: exec_op = 5'b00010; // BEQ (SUB)
                     3'b001: exec_op = 5'b00010; // BNE (SUB)
@@ -295,7 +304,7 @@ module riscv_fetch_decode #(
             // -- SW
             7'b0100011 : begin
                 memory_write = 1'b1;
-                store_instr = 1'b1;
+                is_store = 1'b1;
                 imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};
                 use_imm = 1'b1;
                 exec_op = 5'b00001; // Use the ADD to compute the address (known at EX stage)
@@ -335,6 +344,12 @@ module riscv_fetch_decode #(
                 imm = {{20{instr[31]}}, instr[31:20]}; // Use the I-type immediate
                 exec_op = 5'b00001; // Use ALU's ADD to compute rs1 + imm
 
+            end
+            7'b0001011 : begin // FLUSH 
+                is_flush = 1'b1;
+                use_imm = 1'b1;  
+                imm = {{20{instr[31]}}, instr[31:25], instr[11:7]};       
+                exec_op = 5'b00001; // Use the ADD to compute the address (known at EX stage)
             end
             default : ; // All signals already set by the top level default
         endcase

@@ -6,6 +6,8 @@ module direct_mapped_cache (
     input logic rst,
     // CPU-side
     input logic cpu_req_write, // Read = 0, Write = 1
+    input logic cpu_req_flush,
+    input logic [2:0] flush_mode, // 010 = single address, 011 = entire cache
     input logic cpu_req_valid, 
     output logic cpu_req_ready,
     input logic [ADDR_WIDTH-1 : 0] cpu_addr,
@@ -51,6 +53,7 @@ module direct_mapped_cache (
     logic [31 : 0] cpu_wdata_r, cpu_wdata_masked_r;
     logic [3:0] cpu_wmask_r;
     logic [31:0] mask_extended_r;
+    logic single_address_flush, whole_cache_flush;
  
     logic [TAG_WIDTH-1 : 0] tag_mem [CACHE_ENTRIES - 1 : 0];
     logic [DATA_LINE_WIDTH-1 : 0] data_mem [CACHE_ENTRIES - 1 : 0];
@@ -82,18 +85,40 @@ module direct_mapped_cache (
 
     assign mask_extended_r = { {8{cpu_wmask_r[3]}}, {8{cpu_wmask_r[2]}}, {8{cpu_wmask_r[1]}}, {8{cpu_wmask_r[0]}} };
 
+    assign single_address_flush = cpu_req_flush && (flush_mode == 3'b010);
+    assign whole_cache_flush    = cpu_req_flush && (flush_mode == 3'b011);
+
+
     // Next state logic - combinational
     always_comb begin
         case (current_state)
-            IDLE : next_state = (cpu_req_valid) ? (hit ? (cpu_req_write ? WRITE : CPU_RESPOND) : (evict_line ? EVICT : M_SEND_REQ)) : IDLE;
-            EVICT : next_state = (mem_req_ready) ? M_SEND_REQ : EVICT;
+            // IDLE : next_state = (cpu_req_valid) ? (single_address_flush ? EVICT : (hit ? (cpu_req_write ? WRITE : CPU_RESPOND) : (evict_line ? EVICT : M_SEND_REQ))) : IDLE;
+            // IDLE : next_state =  !cpu_req_valid             ? IDLE 
+            //                 : single_address_flush          ? EVICT 
+            //                 : hit && cpu_req_write          ? WRITE 
+            //                 : hit                           ? CPU_RESPOND
+            //                 : evict_line                    ? EVICT : M_SEND_REQ;            
+            IDLE: begin
+                priority case (1'b1)
+                    !cpu_req_valid       : next_state = IDLE;
+                    single_address_flush : next_state = EVICT; // TODO validate. Single address flush cac coincide with line eviction
+                    // (whole_cache_flush)    : next_state = FLUSH_CACHE; // TODO Implement when set-associative cache in place                    
+                    hit && cpu_req_write : next_state = WRITE;
+                    hit                  : next_state = CPU_RESPOND;
+                    evict_line           : next_state = EVICT;
+                    default              : next_state = M_SEND_REQ;
+                endcase
+            end            
+            EVICT : next_state = (mem_req_ready) ? M_SEND_REQ : EVICT; // EVICT blocks untill memory accepts the evicted line. Then goes to SEND_REQ to load the new line
             M_SEND_REQ : next_state = mem_req_ready ? M_WAIT_RESP : M_SEND_REQ;
-            M_WAIT_RESP : next_state = mem_resp_valid ? (is_write_r ? WRITE : CPU_RESPOND) : M_WAIT_RESP;
+            M_WAIT_RESP : next_state = !mem_resp_valid  ? M_WAIT_RESP :
+                                       is_write_r       ? WRITE : CPU_RESPOND;
             WRITE : next_state = write_done ? CPU_RESPOND : WRITE; 
             CPU_RESPOND: next_state = cpu_resp_ready ? IDLE : CPU_RESPOND; 
             default : next_state = current_state;
         endcase
     end
+
 
 
     // State register - sequential
@@ -137,7 +162,7 @@ module direct_mapped_cache (
                 end
                 CPU_RESPOND : begin
                     cpu_resp_valid = 1'b1;
-                    if (!is_write_r) begin
+                    if (!is_write_r) begin // in case of read operation respond with the data requested
                         cpu_resp_data = data_mem[index_r][offset_r[OFFSET_WIDTH - 1 : OFFSET_WIDTH - 2]*32 +: 32];
                     end
                 end
@@ -159,7 +184,6 @@ module direct_mapped_cache (
             is_write_r <= cpu_req_write;
             cpu_wdata_r <= cpu_wdata;
             cpu_wmask_r <= cpu_wmask;
-            // cpu_wdata_masked_r <= cpu_wdata & mask_extended;
             evict_line_r <= evict_line;
         end
     end
@@ -186,7 +210,6 @@ module direct_mapped_cache (
             end
             if ((current_state == WRITE) && (!write_done)) begin
                 data_mem[index_r][offset_r[3:2]*32 +: 32] <= masked_word_written;
-                // data_mem[index_r][offset_r[3:2]*32 +: 32] <= cpu_wdata_masked_r;
                 dirty_bit_mem[index_r] <= 1'b1; // In a write-back memory a write to cache means dirty bit is asserted for the whole line
                 write_done <= 1'b1; 
             end
@@ -195,7 +218,6 @@ module direct_mapped_cache (
 
     logic [31:0] selected_cache_line_word, selected_cache_line_word_masked, masked_word_written;
     always_comb begin : write_masked_word
-    //TODO have to align the wdata with the mask!
         selected_cache_line_word = data_mem[index_r][offset_r[3:2]*32 +: 32];
         selected_cache_line_word_masked = ~mask_extended_r & selected_cache_line_word;
 
