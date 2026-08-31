@@ -54,6 +54,7 @@ module direct_mapped_cache (
     logic [3:0] cpu_wmask_r;
     logic [31:0] mask_extended_r;
     logic single_address_flush, whole_cache_flush;
+    logic line_is_dirty;
  
     logic [TAG_WIDTH-1 : 0] tag_mem [CACHE_ENTRIES - 1 : 0];
     logic [DATA_LINE_WIDTH-1 : 0] data_mem [CACHE_ENTRIES - 1 : 0];
@@ -80,8 +81,10 @@ module direct_mapped_cache (
     assign offset_r = cpu_addr_r[OFFSET_WIDTH - 1 : 0];
 
     assign hit = (tag == tag_mem[index]) && (valid_bit_mem[index]); // Hit is tag matches and the valid bit is asserted
+    assign line_is_dirty = dirty_bit_mem[index_r];
 
     assign evict_line = valid_bit_mem[index] && dirty_bit_mem[index]; 
+    
 
     assign mask_extended_r = { {8{cpu_wmask_r[3]}}, {8{cpu_wmask_r[2]}}, {8{cpu_wmask_r[1]}}, {8{cpu_wmask_r[0]}} };
 
@@ -91,17 +94,11 @@ module direct_mapped_cache (
 
     // Next state logic - combinational
     always_comb begin
-        case (current_state)
-            // IDLE : next_state = (cpu_req_valid) ? (single_address_flush ? EVICT : (hit ? (cpu_req_write ? WRITE : CPU_RESPOND) : (evict_line ? EVICT : M_SEND_REQ))) : IDLE;
-            // IDLE : next_state =  !cpu_req_valid             ? IDLE 
-            //                 : single_address_flush          ? EVICT 
-            //                 : hit && cpu_req_write          ? WRITE 
-            //                 : hit                           ? CPU_RESPOND
-            //                 : evict_line                    ? EVICT : M_SEND_REQ;            
+        case (current_state)          
             IDLE: begin
                 priority case (1'b1)
                     !cpu_req_valid       : next_state = IDLE;
-                    single_address_flush : next_state = EVICT; // TODO validate. Single address flush cac coincide with line eviction
+                    single_address_flush : next_state = EVICT;
                     // (whole_cache_flush)    : next_state = FLUSH_CACHE; // TODO Implement when set-associative cache in place                    
                     hit && cpu_req_write : next_state = WRITE;
                     hit                  : next_state = CPU_RESPOND;
@@ -109,7 +106,9 @@ module direct_mapped_cache (
                     default              : next_state = M_SEND_REQ;
                 endcase
             end            
-            EVICT : next_state = (mem_req_ready) ? M_SEND_REQ : EVICT; // EVICT blocks untill memory accepts the evicted line. Then goes to SEND_REQ to load the new line
+            EVICT : next_state = !line_is_dirty ? CPU_RESPOND :         // clean. Nothing to evict so we move back to CPU_RESPOND
+                                  mem_req_ready ? M_SEND_REQ :          // dirty line and momory adderts read. Then goes to SEND_REQ to load the new line
+                                                  EVICT;                // dirty line. EVICT blocks untill memory accepts the evicted line.
             M_SEND_REQ : next_state = mem_req_ready ? M_WAIT_RESP : M_SEND_REQ;
             M_WAIT_RESP : next_state = !mem_resp_valid  ? M_WAIT_RESP :
                                        is_write_r       ? WRITE : CPU_RESPOND;
@@ -148,10 +147,12 @@ module direct_mapped_cache (
                     cpu_req_ready = 1'b1;
                 end
                 EVICT : begin
-                    mem_req_valid = 1'b1;
-                    mem_addr = {tag_mem[index_r], index_r, offset_r}; // Construct the address of the cache line to be evicted.
-                    mem_wdata = data_mem[index_r];
-                    mem_req_write = 1'b1;
+                    if (line_is_dirty) begin
+                        mem_req_valid = 1'b1;
+                        mem_addr = {tag_mem[index_r], index_r, offset_r}; // Construct the address of the cache line to be evicted.
+                        mem_wdata = data_mem[index_r];
+                        mem_req_write = 1'b1;
+                    end // If the line is clean and I tried to evict let the transition logic hanle it
                 end
                 M_SEND_REQ : begin
                     mem_req_valid = 1'b1;
