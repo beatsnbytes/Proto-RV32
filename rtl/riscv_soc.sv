@@ -18,6 +18,8 @@ module riscv_soc #(
         .rst(rst),
         //CPU-to-Cache interface
         .cpu_req_write(cpu_req_write), // Read = 0, Write = 1
+        .cpu_req_flush(cpu_req_flush),
+        .flush_mode(flush_mode),
         .cpu_req_valid(cpu_req_valid), 
         .cpu_req_ready(cpu_req_ready),
         .cpu_addr(cpu_addr),
@@ -30,6 +32,8 @@ module riscv_soc #(
 
     // Cache-to-CPU connection
     logic cpu_req_write;
+    logic cpu_req_flush;
+    logic [2:0] flush_mode;
     logic cpu_req_valid;
     logic cpu_req_ready;
     logic [31:0] cpu_addr;
@@ -55,6 +59,8 @@ module riscv_soc #(
         .rst(rst),
         // CPU-side
         .cpu_req_write(cpu_req_write), // Read = 0, Write = 1
+        .cpu_req_flush(cpu_req_flush), 
+        .flush_mode(flush_mode),
         .cpu_req_valid(cpu_req_valid), 
         .cpu_req_ready(cpu_req_ready),
         .cpu_addr(cpu_addr),

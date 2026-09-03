@@ -167,8 +167,12 @@ elif [ "$1" == "coremark-spike" ]; then
     echo "=== Disassembly -> $BUILD_DIR/coremark_spike.dis ==="
     riscv32-unknown-elf-objdump -d "$BUILD_DIR/coremark_spike.elf" > "$BUILD_DIR/coremark_spike.dis"
 
+    echo "=== Key symbols (for reference) ==="
+    riscv32-unknown-elf-nm "$BUILD_DIR/coremark_spike.elf" | grep -E "_start|^[0-9a-f]+ [TtBb] main$|halt|_telemetry_start|_stack_top|_bss_end"    
+
     echo "=== Launching Spike ==="
-    timeout 20s spike --isa=rv32im_zicsr -m0x10000:0x10000 --pc=0x10000 "$BUILD_DIR/coremark_spike.elf" 2> "$BUILD_DIR/spike_raw.log" || true
+    timeout 20s spike --isa=rv32im_zicsr -m0x10000:0x10000 --pc=0x10000 -l "$BUILD_DIR/coremark_spike.elf" 2> "$BUILD_DIR/spike_raw.log" || true
+    # spike --isa=rv32im_zicsr -m0x10000:0x10000 --pc=0x10000 -d "$BUILD_DIR/coremark_spike.elf" # This is for executing in debug mode
 
     echo "=== Extracting PC-only trace ==="
     python3 "$SCRIPT_DIR/spike_format.py" "$BUILD_DIR/spike_raw.log" "$BUILD_DIR/spike_pc_only.log"
@@ -182,6 +186,7 @@ elif [ "$1" == "coremark-spike" ]; then
     echo "  Build+run the RTL side separately ('rtl' mode + your RTL simulator),"
     echo "  then diff (offset 0x10000 is the default, no need to pass it explicitly):"
     echo "    python3 scripts/diff_traces.py <rtl_trace.log> $BUILD_DIR/spike_pc_only.log"
+
 
 
 else

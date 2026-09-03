@@ -50,6 +50,22 @@ int list_sum(node_t *head) {
     return sum;
 }
 
+static inline void cache_flush_addr(unsigned long addr) {
+    register unsigned long rs1 asm("a0") = addr;
+    asm volatile (
+        ".word 0x0005200B"
+        :
+        : "r"(rs1)
+        : "memory"
+    );
+}
+
+// Flush whole cache (funct3=011, opcode=0001011)
+static inline void cache_flush_all(void) {
+    asm volatile (".word 0x0000300B" : : : "memory"); 
+}
+
+
 int main() {
 
     unsigned long cycles_start = read_mcycle();
@@ -74,7 +90,9 @@ int main() {
     telemetry[0] = result;
     telemetry[1] = instret_end - instret_start;
     telemetry[2] = cycles_end - cycles_start;
-    evict();
+    // evict();
+    // cache_flush_addr((unsigned long)&_telemetry_start);
+    cache_flush_all();
 
     while (1) {}
     return 0;

@@ -10,6 +10,7 @@ module riscv_soc_tb;
     logic zero;
 
     riscv_soc #(
+
         .IMEM_HEX_FILE("../sw/bringup/build/coremark_words.hex"),  // pass through to riscv_dfetch, assuming riscv_soc forwards this parameter down
         .DMEM_HEX_FILE("../sw/bringup/build/coremark_lines.hex")  // pass through to main_memory
         // .IMEM_HEX_FILE("../sw/bringup/build/custom_c_words.hex"),  // pass through to riscv_dfetch, assuming riscv_soc forwards this parameter down
@@ -29,7 +30,7 @@ module riscv_soc_tb;
     localparam int HALT_THRESHOLD = 3;
     // change the values below per test
     localparam int unsigned EXPECTED_RESULT = 39600;  // matches telemetry[0]
-    localparam int telemetry_start = 32'h3f40; // memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line
+    localparam int telemetry_start = 32'h3f50; // memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line
 
     // // TRACE DUMPING
     // integer rtl_trace_file;
@@ -72,6 +73,7 @@ module riscv_soc_tb;
                 // the packing bin2hex.py used (word0 = lowest bits of the 128-bit line)
                 automatic int telemetry_results_memory_line = telemetry_start >> 4;
 
+                // // FOR CUSTOM CODE WITH KNOWN RESULT
                 // automatic int unsigned result     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][31:0];
                 // automatic int unsigned instr     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][63:32];
                 // automatic int unsigned cycles    = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
@@ -82,33 +84,30 @@ module riscv_soc_tb;
                 // end else begin
                 //     $display(">>> FAIL: result=%0d does not match expected=%0d", result, EXPECTED_RESULT);
                 // end
-
+                // $display("Total_cycles=%0d, Total_instructions=%0d, IPC=%0.4f", cycles, instr, ipc);
 
 
 
                 // COREMARK RELATED PRINTING
-
-                // Shrinked the test size to 1200 (VALIDATION RUN) and the symbols'placement in memory changed. Now telementry spans 2 memory lines
                 automatic int unsigned iterations    = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][31:0];
                 automatic int unsigned coremark_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][63:32];
-                automatic int unsigned total_instructions     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
-                automatic int unsigned total_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
-                // automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
-                // automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
+                // automatic int unsigned total_instructions     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                // automatic int unsigned total_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];  
+
+                automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
 
 
-                $display("[%0t] Halt loop detected: PC stuck at %h", $time, wb_pc_delayed);                
-                // $display("Total_cycles=%0d, Total_instructions=%0d, IPC=%0.4f", cycles, instr, ipc);
+                $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
+                        iterations, coremark_cycles, crc_final, total_errors);
 
-
-                // $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
-                //         iterations, coremark_cycles, crc_final, total_errors);
-
-                $display("iterations=%0d, total_cycles=%0d, instructions=%0d, cycles=%0d",                        
-                        iterations, coremark_cycles, total_instructions, total_cycles);
-                $display("IPC = %0.4f", real'(total_instructions) / real'(total_cycles));  // caution: see note below
+                // $display("iterations=%0d, total_cycles=%0d, instructions=%0d, cycles=%0d",                        
+                //         iterations, coremark_cycles, total_instructions, total_cycles);
+                // $display("IPC = %0.4f", real'(total_instructions) / real'(total_cycles));  // caution: see note below
 
                 // $fclose(rtl_trace_file);
+
+                $display("[%0t] Halt loop detected: PC stuck at %h", $time, wb_pc_delayed);                
                 $finish;
             end
         end
@@ -138,7 +137,7 @@ module riscv_soc_tb;
         rst = 1'b0;
 
         // Wait enough cycles to see the output of the alu
-        // repeat(999999999) @(posedge clk); #1;
+        // repeat(10000000) @(posedge clk); #1;
 
         // $finish;
     end
