@@ -60,6 +60,11 @@ static inline void cache_flush_addr(unsigned long addr) {
     );
 }
 
+// Flush whole cache (funct3=011, opcode=0001011)
+static inline void cache_flush_all(void) {
+    asm volatile (".word 0x0000300B" : : : "memory"); 
+}
+
 
 int main() {
 
@@ -86,7 +91,8 @@ int main() {
     telemetry[1] = instret_end - instret_start;
     telemetry[2] = cycles_end - cycles_start;
     // evict();
-    cache_flush_addr((unsigned long)&_telemetry_start);
+    // cache_flush_addr((unsigned long)&_telemetry_start);
+    cache_flush_all();
 
     while (1) {}
     return 0;

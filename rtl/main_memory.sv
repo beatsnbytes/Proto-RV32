@@ -25,8 +25,8 @@
     localparam int SHADOW_MEM_DEPTH = $clog2(MEM_WORDS) + 2;
     logic [127 : 0] backing_mem [MEM_LINES-1 : 0]; // What the cache-side has
     logic [31:0] base;
-
-    int read_latency;
+    logic [127:0] data_to_write;
+    int read_latency, write_latency;
 
 
 
@@ -51,15 +51,21 @@
             @(posedge clk);
             if (mem_req_ready && mem_req_valid) begin
                 if (mem_req_write) begin
-                    //TODO add write response path (i.e mem_resp_valid) to the write path and make cache wait on mem_resp_valid to be symmetrically correct. Then I can add variable latency here. Currently its fire and forget.
-                    // read_latency = $urandom_range(2, 10);  // pick your min/max
-                    // repeat(read_latency) @(posedge clk); #1;
-                    backing_mem[mem_addr[(MEM_DEPTH-1):4]] = mem_wdata; 
-
+                    base = mem_addr; // Latch the data before asserting latency becuase after handshake data can be invalid
+                    data_to_write = mem_wdata;
+                    write_latency = $urandom_range(5, 10);  // pick your min/max
+                    repeat(write_latency) @(posedge clk); #1;
+                    backing_mem[base[(MEM_DEPTH-1):4]] = data_to_write; 
+                    mem_resp_valid = 1'b1;
+                    do begin
+                        @(posedge clk);
+                    end while(!mem_resp_ready);
+                    #1;
+                    mem_resp_valid = 1'b0;                        
                 end else begin
-                    base = mem_addr;
-                    // read_latency = $urandom_range(2, 10);  // pick your min/max
-                    // repeat(read_latency) @(posedge clk); #1;
+                    base = mem_addr; // Latch the data before asserting latency becuase after handshake data can be invalid
+                    read_latency = $urandom_range(5, 10);  // pick your min/max
+                    repeat(read_latency) @(posedge clk); #1;
                     mem_resp_data = backing_mem[base[(MEM_DEPTH-1):4]];
                     mem_resp_valid = 1'b1;
                     do begin

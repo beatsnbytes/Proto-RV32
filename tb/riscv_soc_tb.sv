@@ -30,7 +30,7 @@ module riscv_soc_tb;
     localparam int HALT_THRESHOLD = 3;
     // change the values below per test
     localparam int unsigned EXPECTED_RESULT = 39600;  // matches telemetry[0]
-    localparam int telemetry_start = 32'h3f60;//32'h3f60; // memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line
+    localparam int telemetry_start = 32'h3f50; // memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line
 
     // // TRACE DUMPING
     // integer rtl_trace_file;
@@ -137,7 +137,7 @@ module riscv_soc_tb;
         rst = 1'b0;
 
         // Wait enough cycles to see the output of the alu
-        // repeat(999999999) @(posedge clk); #1;
+        // repeat(10000000) @(posedge clk); #1;
 
         // $finish;
     end
