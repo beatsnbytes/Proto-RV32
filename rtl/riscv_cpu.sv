@@ -83,7 +83,6 @@ module riscv_cpu #(
     // CSR related
     logic [31:0] csr_wr_data;
     logic [31:0] csr_rd_data;
-    logic [31:0] fwd_csr_rd_data;
     logic [31:0] mem_csr_wr_data;
     logic csr_rd_en;
     logic [1:0] csr_op, ex_csr_op;
@@ -96,7 +95,6 @@ module riscv_cpu #(
     logic [11:0] ex_csr_addr; // I hold only 4 bits at the rest of the pipeline
     logic [11:0] mem_csr_addr;
     logic is_csr, ex_is_csr;
-    logic fwd_csr;
 
     //MEM pipeline registers & signals
     logic [31:0] mem_data;
