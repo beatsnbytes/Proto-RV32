@@ -223,7 +223,7 @@ module direct_mapped_cache (
                 end                
                 M_SEND_LOAD_REQ : begin
                     mem_req_valid = 1'b1;
-                    mem_addr = {cpu_addr_r[31:4], 4'b0};
+                    mem_addr = {cpu_addr_r[31:4], 4'b0}; // Bring the whole line (4 words, 128 bits)
                 end
                 M_WAIT_LOAD_RESP : begin
                     mem_resp_ready = 1'b1;
@@ -282,6 +282,13 @@ module direct_mapped_cache (
                 data_mem[index_r][offset_r[3:2]*32 +: 32] <= masked_word_written;
                 dirty_bit_mem[index_r] <= 1'b1; // In a write-back memory a write to cache means dirty bit is asserted for the whole line
                 write_done <= 1'b1; 
+            end
+            if (current_state == M_WAIT_FLUSH_RESP) begin // Unset the dirty_bit_mem of the line being flushed from the cache
+                if (whole_cache_flush_r) begin
+                    dirty_bit_mem[index_to_flush] <= 1'b0;
+                end else begin
+                    dirty_bit_mem[index_r] <= 1'b0;
+                end
             end
         end
     end
