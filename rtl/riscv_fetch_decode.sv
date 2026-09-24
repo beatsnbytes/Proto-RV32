@@ -1,6 +1,5 @@
 // riscv_fetch_decode.sv
 // Fetch and decode stage module for the RISC-V processor pipeline
-// Week10 - Fetch and Decode stages
 
 // =====================================================================
 // RV32IM (+ CSR) instruction reference — assign your own exec_op codes

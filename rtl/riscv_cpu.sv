@@ -73,6 +73,13 @@ module riscv_cpu #(
     logic real_start;
     logic load_use_hzrd_bubble;
 
+    // FETCH related
+    logic [31:0] if_instr;
+
+    // ID Pipeline registers
+    logic [31:0] id_pc;
+    logic [31:0] id_instr;
+
     // Branch related
     logic condition_needs_zero, condition_not_needs_zero;
 
@@ -128,7 +135,7 @@ module riscv_cpu #(
     logic is_retired_inst_valid;
 
     
-    // Compute next pc
+    // NEXT PC COMPUTATION
     always_ff @(posedge clk) begin
         if (rst) begin
             pc <= 32'd0;    
@@ -142,18 +149,40 @@ module riscv_cpu #(
             pc <= pc + 32'd4;
         end
     end
-    
-    riscv_fetch_decode #(
+
+
+    riscv_fetch #(
         .IMEM_HEX_FILE(IMEM_HEX_FILE)
-    )riscv_fetch_decode_inst(
+    ) riscv_fetch_inst (
         .pc(pc),
+        .instr(if_instr)
+    );
+
+    always_ff @(posedge clk) begin
+        if(rst) begin // Removed branch_taken from here because it was causing JAL/R instructions while stall to be lost in the pipeline (they werent stalling)
+            id_pc <= '0;
+            id_instr <= '0;
+        end else if (muldiv_busy || load_use_hzrd_bubble || mem_stall) begin
+            // FREEZE - hold current values - no assignment needed here 
+        end else if (branch_taken) begin 
+            id_pc <= '0;
+            id_instr <= '0;
+        end else begin
+            id_pc <= pc;
+            id_instr <= if_instr;
+        end
+    end
+   
+
+    
+    riscv_decode riscv_decode_inst(
+        .instr(id_instr),
         .rs1_addr(rs1_addr),
         .rs2_addr(rs2_addr),
         .rd_addr(rd_addr),
         .imm(imm),
         .exec_op(exec_op),
         .reg_wr_en(reg_wr_en),
-        .instr(instr),
         .use_imm(use_imm),
         .is_branch(is_branch),
         .func3(func3),
@@ -229,7 +258,7 @@ module riscv_cpu #(
             ex_memory_to_reg <= memory_to_reg;
             ex_is_branch <= is_branch;
             ex_func3 <= func3;
-            ex_pc <= pc;
+            ex_pc <= id_pc;
             ex_csr_addr <= csr_addr; // 4 bits enough for 16 CSR registers
             ex_is_csr <= is_csr;
             ex_csr_wr_en <= csr_wr_en;

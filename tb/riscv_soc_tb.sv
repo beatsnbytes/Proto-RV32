@@ -30,9 +30,9 @@ module riscv_soc_tb;
     localparam int HALT_THRESHOLD = 3;
     // change the values below per test
     localparam int unsigned EXPECTED_RESULT = 39600;  // matches telemetry[0]
-    localparam int telemetry_start = 32'h3f50; // memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line
+    localparam int telemetry_start = 32'h3f60; // 32'h4120 memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line // TODO change here accoring to telemetry line
 
-    // // TRACE DUMPING
+    // // TRACE DUMPING TODO enable only for lockstep verification with Spike
     // integer rtl_trace_file;
     // logic [31:0] wb_pc_delayed_trace;
 
@@ -91,19 +91,24 @@ module riscv_soc_tb;
                 // COREMARK RELATED PRINTING
                 automatic int unsigned iterations    = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][31:0];
                 automatic int unsigned coremark_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][63:32];
-                // automatic int unsigned total_instructions     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
-                // automatic int unsigned total_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];  
+                
+                ///// 1. Measure and print total IPC from coremark - respective change at the core_main.c /////////////
+                automatic int unsigned total_instructions     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                automatic int unsigned total_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];  
 
-                automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
-                automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
+                $display("iterations=%0d, total_cycles=%0d, instructions=%0d, cycles=%0d",                        
+                        iterations, coremark_cycles, total_instructions, total_cycles);
+                $display("IPC = %0.4f", real'(total_instructions) / real'(total_cycles));  // caution: see note below
+                ///////// End 1. //////////////////////////////////////
 
+                ///// 2. Measure and print total crc for validation from coremark - respective change at the core_main.c /////////////
+                // automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                // automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
 
-                $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
-                        iterations, coremark_cycles, crc_final, total_errors);
+                // $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
+                //         iterations, coremark_cycles, crc_final, total_errors);
+                ///////// End 2. //////////////////////////////////////
 
-                // $display("iterations=%0d, total_cycles=%0d, instructions=%0d, cycles=%0d",                        
-                //         iterations, coremark_cycles, total_instructions, total_cycles);
-                // $display("IPC = %0.4f", real'(total_instructions) / real'(total_cycles));  // caution: see note below
 
                 // $fclose(rtl_trace_file);
 
@@ -136,9 +141,10 @@ module riscv_soc_tb;
         repeat(2) @(posedge clk); #1;
         rst = 1'b0;
 
-        // Wait enough cycles to see the output of the alu
-        // repeat(10000000) @(posedge clk); #1;
+        // // Wait enough cycles to debug the error
+        // repeat(10000) @(posedge clk); #1;
 
+        // $fclose(rtl_trace_file);
         // $finish;
     end
 
