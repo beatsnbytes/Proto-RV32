@@ -1,6 +1,5 @@
 // riscv_cpu.sv
 // The top level module that connects fetch&decode with execute
-// Week10 - Towards a simple RISC-V processor
 
 //TODO perform a general code refactoring. bundle logic together per stage pipeline registers and reorder module instationation, seq and comb blocks where needed
 module riscv_cpu #(
