@@ -105,6 +105,7 @@ elif [ "$1" == "rtl-trace" ]; then
     echo "  then diff (offset 0x10000 is the default, no need to pass it explicitly):"
     echo "    python3 scripts/diff_traces.py <rtl_trace.log> $BUILD_DIR/spike_pc_only.log"
 
+# TODO put flag -mno-relax in case of lockstep with spike so instructions match
 elif [ "$1" == "coremark-rtl" ]; then
     echo "=== Building CoreMark for RTL (ORIGIN=0x0, ITERATIONS=$COREMARK_ITERATIONS) ==="
     [ -n "$TDS_FLAG" ] && echo "    TOTAL_DATA_SIZE override: $COREMARK_TOTAL_DATA_SIZE"

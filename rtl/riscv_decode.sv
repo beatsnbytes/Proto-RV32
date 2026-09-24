@@ -1,5 +1,5 @@
-// riscv_fetch_decode.sv
-// Fetch and decode stage module for the RISC-V processor pipeline
+// riscv_decode.sv
+// Decode stage module for the RISC-V processor pipeline
 
 // =====================================================================
 // RV32IM (+ CSR) instruction reference — assign your own exec_op codes
@@ -132,19 +132,14 @@
 //       exec_op only names the FUNCTIONAL-UNIT OPERATION.
 
 
-module riscv_fetch_decode #(
-   parameter string IMEM_HEX_FILE = "UNSET.hex" // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error
-)(
-    // input logic clk, // TODO unconnected for now but could be of use for future separation of fetch and decode logic
-    // input logic rst, // TODO unconnected for now but could be of use for future separation of fetch and decode logic
-    input logic [31:0] pc, 
+module riscv_decode (
+    input logic [31:0] instr,
     output logic [4:0] rs1_addr,
     output logic [4:0] rs2_addr,
     output logic [4:0] rd_addr,
     output logic [31:0] imm,
     output logic [4:0] exec_op, // 32 instructions are enough for the whole rv32im extension
     output logic reg_wr_en,
-    output logic [31:0] instr,
     output logic use_imm, // 0 = use rs2, 1 use imm
     output logic is_branch,
     output logic [2:0] func3,
@@ -164,23 +159,11 @@ module riscv_fetch_decode #(
 );
 
 //TODO Are any signals now irrelevant to be created here and we could derive them from the ex_op bits?
-    // logic [31:0] imem [4095:0]; // The 64KB memory
-    logic [31:0] imem [16383:0];
+
     logic is_store; // TODO maybe thats redundant since I got memory_write already
-
-    `ifdef FORMAL
-        // imem left unconstrained for formal verification
-    `else
-       initial $readmemh(IMEM_HEX_FILE, imem); // Reading the instructions from a hex file
-        // initial $readmemh("/home/vatistas/hdl_rampup/sv-learning/rtl/test_words.hex", imem); // Reading the instructions from a hex file
-    `endif
-
-
     logic [6:0] opcode;
     logic [6:0] func7;
 
-
-    assign instr = imem[pc[15:2]]; // Word addressed imem and 32bit instructions. Not counting the 2 LSBs
     assign opcode = instr[6:0];
     assign func3 = instr[14:12];
     assign func7 = instr[31:25];
@@ -190,7 +173,7 @@ module riscv_fetch_decode #(
 
     always_comb begin
 
-        exec_op = 5'b00000; // Default NOP
+        exec_op = 5'b00000; // TODO Default NOP. Is it illegal in RISCV? prune? should I change to ADDI x0, x0, 0 (encoded as 0x00000013).
         reg_wr_en = 1'b0;
         imm = 32'b0;
         use_imm = 1'b0; // Get value from rs2
