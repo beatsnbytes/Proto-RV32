@@ -158,6 +158,18 @@ module riscv_cpu #(
         .instr(if_instr)
     );
 
+
+
+    riscv_branch_predictor #(
+        .BHT_SIZE(64)
+    ) riscv_branch_predictor_inst (
+            //TODO complete the rest
+    );
+    // TODO connect here the branch_taken from EX stage as resolution_taken signal
+    // TODO connect the resolution_pc from the EX stage PC
+    // TODO connect the prediction_pc to the IF stage PC
+    // TODO pass the prediction_taken down the line to the EX stage
+
     always_ff @(posedge clk) begin
         if(rst) begin // Removed branch_taken from here because it was causing JAL/R instructions while stall to be lost in the pipeline (they werent stalling)
             id_pc <= '0;
