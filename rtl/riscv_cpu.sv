@@ -80,6 +80,7 @@ module riscv_cpu #(
     logic prediction_taken;
     logic [31:0] prediction_pc;
     logic [31:0] resolution_pc;
+    logic [31:0] prediction_target;
 
     // ID Pipeline registers
     logic [31:0] id_pc;
@@ -144,19 +145,37 @@ module riscv_cpu #(
 
     
     // NEXT PC COMPUTATION
+    // always_ff @(posedge clk) begin
+    //     if (rst) begin
+    //         pc <= 32'd0;    
+    //     end else if ( muldiv_busy || load_use_hzrd_bubble || mem_stall) begin // mem_stall wins everywhere. In the case of branch_taken alongside with mem_stall the latter will
+    //                                                                           // win and the pc will "erroneously" show the wrong PC for the mem_stall duration. 
+    //                                                                           // When it finalizes branch_taken will take over and put the jump pc here.
+    //         // FREEZE - hold current value - no assignment needed                              
+    //     end else if (branch_taken) begin
+    //         pc <= target_pc;            
+    //     end else begin
+    //         pc <= pc + 32'd4;
+    //     end
+    // end
+
+
     always_ff @(posedge clk) begin
         if (rst) begin
             pc <= 32'd0;    
         end else if ( muldiv_busy || load_use_hzrd_bubble || mem_stall) begin // mem_stall wins everywhere. In the case of branch_taken alongside with mem_stall the latter will
                                                                               // win and the pc will "erroneously" show the wrong PC for the mem_stall duration. 
                                                                               // When it finalizes branch_taken will take over and put the jump pc here.
-            // FREEZE - hold current value - no assignment needed                              
-        end else if (branch_taken) begin
-            pc <= target_pc;            
+            // FREEZE - hold current value - no assignment needed   
+        end else if (misprediction) begin
+            pc <= target_pc;                        
+        end else if (prediction_taken) begin
+            pc <= prediction_target;
         end else begin
             pc <= pc + 32'd4;
         end
     end
+
 
 
     riscv_fetch #(
@@ -171,13 +190,13 @@ module riscv_cpu #(
     riscv_branch_predictor #(
         .BHT_SIZE(64)
     ) riscv_branch_predictor_inst (
-            //TODO complete the rest
-            .clk(clk),
-            .rst(rst),
-            .resolution_pc(target_pc),
-            .resolution_taken(branch_taken),
-            .prediction_pc(pc),
-            .prediction_taken(prediction_taken)
+        .clk(clk),
+        .rst(rst),
+        .pc(pc),
+        .resolution_pc(target_pc),
+        .resolution_taken(branch_taken),
+        .prediction_target(prediction_target),
+        .prediction_taken(prediction_taken)
     );
 
     always_ff @(posedge clk) begin
@@ -185,16 +204,20 @@ module riscv_cpu #(
             id_pc <= '0;
             id_instr <= '0;
             id_prediction_taken <= '0;
+            id_prediction_target <= '0;
         end else if (muldiv_busy || load_use_hzrd_bubble || mem_stall) begin
             // FREEZE - hold current values - no assignment needed here 
-        end else if (branch_taken) begin 
+        end else if (misprediction) begin 
+            // TODO branch taken to be replaced by flush signal. could that be misprediction?
             id_pc <= '0;
             id_instr <= '0;
             id_prediction_taken <= '0;
+            id_prediction_target <= '0;
         end else begin
             id_pc <= pc;
             id_instr <= if_instr;
             id_prediction_taken <= prediction_taken;
+            id_prediction_target <= prediction_target;
         end
     end
    
@@ -247,9 +270,12 @@ module riscv_cpu #(
             ex_is_jal <= 1'b0;
             ex_is_jalr <= 1'b0;
             ex_is_flush <= 1'b0;
+            ex_prediction_taken <= '0;
+            ex_prediction_target <= '0;
         end else if (mem_stall || muldiv_busy) begin
             // FREEZE - hold current values - no assignment needed here 
-        end else if (load_use_hzrd_bubble || branch_taken) begin // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
+        end else if (load_use_hzrd_bubble || misprediction) begin // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
+        // TODO probably branch_taken should be replaced by flush now. Now brach_taken doesnt mean flush because the speculative prediction can be right
             ex_rs1_addr <= 5'b0;
             ex_rs2_addr <= 5'b0;
             ex_rd_addr <= 5'b0;
@@ -270,6 +296,8 @@ module riscv_cpu #(
             ex_is_jal <= 1'b0;
             ex_is_jalr <= 1'b0;
             ex_is_flush <= 1'b0;
+            ex_prediction_taken <= '0;
+            ex_prediction_target <= '0;            
         end else begin
             ex_rs1_addr <= rs1_addr;
             ex_rs2_addr <= rs2_addr;
@@ -291,14 +319,27 @@ module riscv_cpu #(
             ex_is_jal <= is_jal;
             ex_is_jalr <= is_jalr;
             ex_is_flush <= is_flush;
+            ex_prediction_taken <= id_prediction_taken;
+            ex_prediction_target <= id_prediction_target;            
         end
     end
+
+    logic taken_misprediction, target_misprediction;
+    logic [31:0] id_prediction_target, ex_prediction_target;
+    logic ex_prediction_taken;
+    logic misprediction;
 
     always_comb begin: branch_logic
         target_pc = ex_is_jalr ? (exec_result & ~(32'b1)) : (ex_pc + ex_imm); // Select between (ex_pc + ex_imm) and (rs1 + imm) & ~1 coming from the ALU in the case of JALR
         condition_needs_zero = ((ex_func3==3'b000) || (ex_func3==3'b101) || (ex_func3==3'b111));
         condition_not_needs_zero = ((ex_func3==3'b001) || (ex_func3==3'b100) || (ex_func3==3'b110));
         branch_taken = ex_is_jal || ex_is_jalr || (ex_is_branch && ((condition_needs_zero && zero) || (condition_not_needs_zero && !zero)));
+        // TODO rename branch_taken to actual_taken and target_pc to actual_target. They are the ultimately true values. Everything else is speculation
+
+        // Compare with speculative results and assert misprediction
+        taken_misprediction = ex_prediction_taken != branch_taken;
+        target_misprediction = ex_prediction_target != target_pc;
+        misprediction =  taken_misprediction || (ex_prediction_taken && branch_taken && target_misprediction); // When both prediction and actual not taken we should not assert misprediction irregardless of target matching
     end
 
 
