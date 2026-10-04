@@ -76,6 +76,11 @@ module riscv_cpu #(
     // FETCH related
     logic [31:0] if_instr;
 
+    // Branch Predictor related
+    logic prediction_taken;
+    logic [31:0] prediction_pc;
+    logic [31:0] resolution_pc;
+
     // ID Pipeline registers
     logic [31:0] id_pc;
     logic [31:0] id_instr;
@@ -101,6 +106,9 @@ module riscv_cpu #(
     logic [11:0] ex_csr_addr; // I hold only 4 bits at the rest of the pipeline
     logic [11:0] mem_csr_addr;
     logic is_csr, ex_is_csr;
+
+    // ID pipeline registers & signals
+    logic id_prediction_taken;
 
     //MEM pipeline registers & signals
     logic [31:0] mem_data;
@@ -164,24 +172,29 @@ module riscv_cpu #(
         .BHT_SIZE(64)
     ) riscv_branch_predictor_inst (
             //TODO complete the rest
+            .clk(clk),
+            .rst(rst),
+            .resolution_pc(target_pc),
+            .resolution_taken(branch_taken),
+            .prediction_pc(pc),
+            .prediction_taken(prediction_taken)
     );
-    // TODO connect here the branch_taken from EX stage as resolution_taken signal
-    // TODO connect the resolution_pc from the EX stage PC
-    // TODO connect the prediction_pc to the IF stage PC
-    // TODO pass the prediction_taken down the line to the EX stage
 
     always_ff @(posedge clk) begin
         if(rst) begin // Removed branch_taken from here because it was causing JAL/R instructions while stall to be lost in the pipeline (they werent stalling)
             id_pc <= '0;
             id_instr <= '0;
+            id_prediction_taken <= '0;
         end else if (muldiv_busy || load_use_hzrd_bubble || mem_stall) begin
             // FREEZE - hold current values - no assignment needed here 
         end else if (branch_taken) begin 
             id_pc <= '0;
             id_instr <= '0;
+            id_prediction_taken <= '0;
         end else begin
             id_pc <= pc;
             id_instr <= if_instr;
+            id_prediction_taken <= prediction_taken;
         end
     end
    
