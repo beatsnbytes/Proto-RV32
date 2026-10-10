@@ -90,7 +90,7 @@ elif [ "$1" == "rtl-trace" ]; then
         "$SRC_DIR/start.s" "$SRC_DIR/custom_c.c"
 
     echo "=== Running on Spike with commit logging (ORIGIN=0x10000) ==="
-    timeout 10s spike --isa=rv32im_zicsr -m0x10000:0x10000 --pc=0x10000 -l "$BUILD_DIR/custom_c_spike.elf" 2> "$BUILD_DIR/spike_raw.log" || true
+    timeout 15s spike --isa=rv32im_zicsr -m0x10000:0x10000 --pc=0x10000 -l "$BUILD_DIR/custom_c_spike.elf" 2> "$BUILD_DIR/spike_raw.log" || true
 
     echo "=== Extracting PC-only trace ==="
     python3 "$SCRIPT_DIR/spike_format.py" "$BUILD_DIR/spike_raw.log" "$BUILD_DIR/spike_pc_only.log"

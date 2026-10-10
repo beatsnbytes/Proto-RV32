@@ -144,7 +144,7 @@ module riscv_cpu #(
     logic is_retired_inst_valid;
 
     
-    // NEXT PC COMPUTATION
+    // // NEXT PC COMPUTATION
     // always_ff @(posedge clk) begin
     //     if (rst) begin
     //         pc <= 32'd0;    
@@ -167,8 +167,13 @@ module riscv_cpu #(
                                                                               // win and the pc will "erroneously" show the wrong PC for the mem_stall duration. 
                                                                               // When it finalizes branch_taken will take over and put the jump pc here.
             // FREEZE - hold current value - no assignment needed   
-        end else if (misprediction) begin
-            pc <= target_pc;                        
+        end else if (misprediction) begin //TODO fix here. The error is that imisprediction should  give target in spacific cases only 
+            // if (branch_taken) begin
+            //     pc <= target_pc;                        
+            // end else begin
+            //     pc <= ex_pc + 32'd4;
+            // end
+            pc <= branch_taken ? target_pc : (ex_pc + 32'd4);
         end else if (prediction_taken) begin
             pc <= prediction_target;
         end else begin
@@ -188,11 +193,13 @@ module riscv_cpu #(
 
 
     riscv_branch_predictor #(
-        .BHT_SIZE(64)
+        .BHT_SIZE(64),
+        .BTB_SIZE(64)
     ) riscv_branch_predictor_inst (
         .clk(clk),
         .rst(rst),
         .pc(pc),
+        .execute_pc(ex_pc),
         .resolution_pc(target_pc),
         .resolution_taken(branch_taken),
         .prediction_target(prediction_target),
@@ -274,7 +281,7 @@ module riscv_cpu #(
             ex_prediction_target <= '0;
         end else if (mem_stall || muldiv_busy) begin
             // FREEZE - hold current values - no assignment needed here 
-        end else if (load_use_hzrd_bubble || misprediction) begin // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
+        end else if (load_use_hzrd_bubble || misprediction) begin //TODO remove branch_taken // load_use_hazard has to insert a bubble but has to have lower priority than mem_stall so we have to duplicate the zero branches.
         // TODO probably branch_taken should be replaced by flush now. Now brach_taken doesnt mean flush because the speculative prediction can be right
             ex_rs1_addr <= 5'b0;
             ex_rs2_addr <= 5'b0;
@@ -337,9 +344,10 @@ module riscv_cpu #(
         // TODO rename branch_taken to actual_taken and target_pc to actual_target. They are the ultimately true values. Everything else is speculation
 
         // Compare with speculative results and assert misprediction
-        taken_misprediction = ex_prediction_taken != branch_taken;
+        taken_misprediction = (ex_prediction_taken != branch_taken); //Dont care about the branch predictor taken/not taken when there is a jump instruction 
+        //  (ex_is_jal || ex_is_jalr) ? 0 : //TODO what to do with jump instructions?
         target_misprediction = ex_prediction_target != target_pc;
-        misprediction =  taken_misprediction || (ex_prediction_taken && branch_taken && target_misprediction); // When both prediction and actual not taken we should not assert misprediction irregardless of target matching
+        misprediction =  taken_misprediction || (ex_prediction_taken && branch_taken && target_misprediction); // When both prediction and actual not taken we should not assert misprediction irregardless of target matching. Why??
     end
 
 

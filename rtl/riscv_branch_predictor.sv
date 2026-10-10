@@ -10,12 +10,13 @@ module riscv_branch_predictor #(
     input logic rst,
     input logic [31:0] pc,    // It is the IF PC
     input logic [31:0] resolution_pc, 
+    input logic [31:0] execute_pc,
     input logic resolution_taken,
     output logic [31:0] prediction_target,
     output logic prediction_taken
 );
 
-    localparam BHT_PC_IDX_WIDTH = $clog2(BHT_SIZE) + 2; //Add 2 bits since the indexing leaves 2 LSB out since instructions are bute addressed
+    localparam BHT_PC_IDX_WIDTH = $clog2(BHT_SIZE) + 2; //Add 2 bits since the indexing leaves 2 LSB out since instructions are byte addressed
     localparam BTB_PC_IDX_WIDTH = $clog2(BTB_SIZE) + 2; //Add 2 bits since the indexing leaves 2 LSB out since instructions are byte addressed
 
     localparam BTB_TAG_WIDTH = 32 - BTB_PC_IDX_WIDTH; // TODO probably dont need all MSB's. Which ones? Resizing will make comparator smaller. IMEM size will dictate that probably
@@ -36,10 +37,14 @@ module riscv_branch_predictor #(
 
     btb_entry_t btb [BTB_SIZE];
 
+    //TODO if it is jal/jalr prediction taken should always be 1
+    // But in if I dont know the nature of the instruction yet.
 
     // The update index and tag coming from EX
-    assign update_index = resolution_pc[BHT_PC_IDX_WIDTH-1 : 2]; // Size the pc acordingly to index the BHT
-    assign update_tag = resolution_pc[31 : (32 - BTB_TAG_WIDTH)];
+    // assign update_index = resolution_pc[BHT_PC_IDX_WIDTH-1 : 2]; // Size the pc acordingly to index the BHT
+    // assign update_tag = resolution_pc[31 : (32 - BTB_TAG_WIDTH)];
+    assign update_index = execute_pc[BHT_PC_IDX_WIDTH-1 : 2]; // Size the pc acordingly to index the BHT
+    assign update_tag = execute_pc[31 : (32 - BTB_TAG_WIDTH)];
 
     assign pc_sized = pc[BHT_PC_IDX_WIDTH-1 : 2];
     assign pc_tag =  pc[31 : (32 - BTB_TAG_WIDTH)]; // Extract the btb tag from the IF PC
@@ -67,7 +72,7 @@ module riscv_branch_predictor #(
             if (resolution_taken) begin
                 // TODO should I take care to update only if branch instr? gate with udate_en deending on the instr. I can because it comes from EX where I know the instr!
                     bht[update_index] <= (bht[update_index]==2'b11) ? 2'b11 : (bht[update_index] + 1'b1);
-                    btb[update_index] <= '{valid: 1'b1, tag: update_tag , target: resolution_pc} ;
+                    btb[update_index] <= '{valid: 1'b1, tag: update_tag , target: resolution_pc} ; //TODO dont know if the target is the target pc.something with the idx and target here smells funny
             end else begin
                     bht[update_index] <= (bht[update_index]==2'b00) ? 2'b00 : (bht[update_index] - 1'b1);
             end
