@@ -124,7 +124,7 @@ module riscv_soc_tb;
         if (!rst && (cycle_count % 10_000_000 == 0)) begin
             automatic real ipc = real'(dut.riscv_cpu_inst.riscv_execute_inst.riscv_csr_inst.minstret) / real'(cycle_count);
             $display("[%0t] progress: %0d cycles, pc=%h, IPC=%0.4f",
-                    $time, cycle_count, dut.riscv_cpu_inst.pc,
+                    $time, cycle_count, dut.riscv_cpu_inst.if_pc,
                     ipc);
         end
     end

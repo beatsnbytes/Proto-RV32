@@ -51,7 +51,7 @@ module riscv_cpu #(
     logic ex_is_branch;
     logic [2:0] ex_func3;
     logic [31:0] ex_pc;
-    logic [31:0] pc;
+    logic [31:0] if_pc;
     logic [31:0] target_pc;
     logic zero;
     logic [31:0] exec_result;
@@ -162,22 +162,17 @@ module riscv_cpu #(
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            pc <= 32'd0;    
+            if_pc <= 32'd0;    
         end else if ( muldiv_busy || load_use_hzrd_bubble || mem_stall) begin // mem_stall wins everywhere. In the case of branch_taken alongside with mem_stall the latter will
                                                                               // win and the pc will "erroneously" show the wrong PC for the mem_stall duration. 
                                                                               // When it finalizes branch_taken will take over and put the jump pc here.
             // FREEZE - hold current value - no assignment needed   
-        end else if (misprediction) begin //TODO fix here. The error is that imisprediction should  give target in spacific cases only 
-            // if (branch_taken) begin
-            //     pc <= target_pc;                        
-            // end else begin
-            //     pc <= ex_pc + 32'd4;
-            // end
-            pc <= branch_taken ? target_pc : (ex_pc + 32'd4);
+        end else if (misprediction) begin  
+            if_pc <= actual_target; 
         end else if (prediction_taken) begin
-            pc <= prediction_target;
+            if_pc <= prediction_target;
         end else begin
-            pc <= pc + 32'd4;
+            if_pc <= if_pc + 32'd4;
         end
     end
 
@@ -186,20 +181,21 @@ module riscv_cpu #(
     riscv_fetch #(
         .IMEM_HEX_FILE(IMEM_HEX_FILE)
     ) riscv_fetch_inst (
-        .pc(pc),
+        .pc(if_pc),
         .instr(if_instr)
     );
 
 
 
     riscv_branch_predictor #(
-        .BHT_SIZE(64),
-        .BTB_SIZE(64)
+        .BHT_SIZE(512),
+        .BTB_SIZE(128)
     ) riscv_branch_predictor_inst (
         .clk(clk),
         .rst(rst),
-        .pc(pc),
-        .execute_pc(ex_pc),
+        .pc(if_pc),
+        .update_pc(ex_pc),
+        .branch_instr(ex_is_branch),
         .resolution_pc(target_pc),
         .resolution_taken(branch_taken),
         .prediction_target(prediction_target),
@@ -221,14 +217,14 @@ module riscv_cpu #(
             id_prediction_taken <= '0;
             id_prediction_target <= '0;
         end else begin
-            id_pc <= pc;
+            id_pc <= if_pc;
             id_instr <= if_instr;
             id_prediction_taken <= prediction_taken;
             id_prediction_target <= prediction_target;
         end
     end
    
-
+    //TODO forward id_pc and imm form here to branch predictor for JAL instructions' early prediction
     
     riscv_decode riscv_decode_inst(
         .instr(id_instr),
@@ -335,6 +331,7 @@ module riscv_cpu #(
     logic [31:0] id_prediction_target, ex_prediction_target;
     logic ex_prediction_taken;
     logic misprediction;
+    logic [31:0] actual_target;
 
     always_comb begin: branch_logic
         target_pc = ex_is_jalr ? (exec_result & ~(32'b1)) : (ex_pc + ex_imm); // Select between (ex_pc + ex_imm) and (rs1 + imm) & ~1 coming from the ALU in the case of JALR
@@ -347,7 +344,9 @@ module riscv_cpu #(
         taken_misprediction = (ex_prediction_taken != branch_taken); //Dont care about the branch predictor taken/not taken when there is a jump instruction 
         //  (ex_is_jal || ex_is_jalr) ? 0 : //TODO what to do with jump instructions?
         target_misprediction = ex_prediction_target != target_pc;
-        misprediction =  taken_misprediction || (ex_prediction_taken && branch_taken && target_misprediction); // When both prediction and actual not taken we should not assert misprediction irregardless of target matching. Why??
+        misprediction =  taken_misprediction || (ex_prediction_taken && branch_taken && target_misprediction); // When both prediction and actual not taken we should not assert misprediction irregardless of target matching.
+        //TODO compute the actual next_pc here and send only a signal in next_pc logic
+        actual_target = branch_taken ? target_pc : ex_pc + 32'd4;
     end
 
 
