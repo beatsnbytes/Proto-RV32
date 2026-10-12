@@ -6,12 +6,13 @@ module riscv_branch_predictor #(
     parameter BHT_SIZE = 64,
     parameter BTB_SIZE = 64
 )(
+    //TODO rename the signals for easier understanding
     input logic clk,
     input logic rst,
     input logic [31:0] pc,    // It is the IF PC
-    input logic [31:0] resolution_pc, 
     input logic [31:0] update_pc,
-    input logic branch_instr,
+    input logic is_branch, // 0 = JAL/JALR, 1=BNE, BNEQ etc
+    input logic [31:0] resolution_target, 
     input logic resolution_taken,
     output logic [31:0] prediction_target,
     output logic prediction_taken
@@ -69,9 +70,7 @@ module riscv_branch_predictor #(
 
     assign prediction_taken = (btb_hit && (bht_taken || is_jump)); // I should only take the prediction if there is actually one (on BTB hit)
                                                                    // since I dont put JAL/R in BHT I guard the control signal accordingly
-    // assign prediction_taken = bht_taken || is_jump; // Simply give the BHT entry. If we know if jump good. If not we give weakly taken by default.
-                                                    // only bad case the BHT was left in not taken state by previous instr.
-    // assign prediction_taken = bht_taken; //TODO probably thats right!!!!!
+
     // TODO In the case we get BHT entry from another instr (aliasing) then we might hit on not taken for first iteration. Can we avoid it?
     assign prediction_target = btb[pc_sized_to_btb_index].target; // Target is whatever is in the BTB
 
@@ -79,13 +78,14 @@ module riscv_branch_predictor #(
     always_ff @(posedge clk) begin
         if (rst) begin
             for (int i=0; i<=(BHT_SIZE -1); i++) begin
-                bht[i] <= 2'b10; // Initialize with 'weakly taken'. Why??
+                bht[i] <= 2'b10; // Initialize with 'weakly taken'.
             end            
-        end else if (branch_instr) begin
+        end else if (is_branch) begin
+            // Only branches update BHT. JAL/R dont pollute in BHT
             if (resolution_taken) begin
                     bht[bht_index_to_update] <= (bht[bht_index_to_update]==2'b11) ? 2'b11 : (bht[bht_index_to_update] + 1'b1);
             end else begin
-                    bht[bht_index_to_update] <= (bht[bht_index_to_update]==2'b00) ? 2'b00 : (bht[bht_index_to_update] - 1'b1); // JAL/R should not take place in BHT
+                    bht[bht_index_to_update] <= (bht[bht_index_to_update]==2'b00) ? 2'b00 : (bht[bht_index_to_update] - 1'b1);
             end  
         end
     end
@@ -98,33 +98,10 @@ module riscv_branch_predictor #(
             end           
         end else begin
             if (resolution_taken) begin
-                btb[btb_index_to_update] <= '{valid: 1'b1, tag: update_btb_tag , target: resolution_pc, instr_type: branch_instr} ; 
+                btb[btb_index_to_update] <= '{valid: 1'b1, tag: update_btb_tag , target: resolution_target, instr_type: is_branch} ; 
             end  
         end
     end
-
-
-    // // BHT and BTB Reset and update
-    // always_ff @(posedge clk) begin
-    //     if (rst) begin
-    //         for (int i=0; i<=(BHT_SIZE -1); i++) begin
-    //             bht[i] <= 2'b10; // Initialize with 'weakly taken'. This way loops only fail at the last iter 
-    //                              // and JAL/R instructions get correct prediction on their first iteration too
-    //         end
-    //         for (int i=0; i<=(BTB_SIZE -1); i++) begin
-    //             btb[i] <= '{valid:1'b0, tag:'0, target:'0, instr_type:1'b1}; // Initialize with branch instruction type
-    //         end
-    //     end else (branch_instr) begin // Update only if it is a branch instr
-    //         if (resolution_taken) begin
-    //             // TODO should I take care to update only if branch instr? gate with udate_en deending on the instr. I can because it comes from EX where I know the instr!
-    //                 bht[update_index] <= (bht[update_index]==2'b11) ? 2'b11 : (bht[update_index] + 1'b1);
-    //                 btb[update_index] <= '{valid: 1'b1, tag: update_tag , target: resolution_pc, instr_type: branch_instr} ; //TODO dont know if the target is the target pc.something with the idx and target here smells funny
-    //         end else begin
-    //                 bht[update_index] <= (bht[update_index]==2'b00) ? 2'b00 : (bht[update_index] - 1'b1); //TODO JAL/R should not tke place in BHT
-    //         end
-    //     end
-    // end
-
 endmodule
 
 

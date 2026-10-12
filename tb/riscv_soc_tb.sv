@@ -143,7 +143,7 @@ module riscv_soc_tb;
         rst = 1'b0;
 
         // Wait enough cycles to debug the error
-        // repeat(100000) @(posedge clk); #1;
+        // repeat(1000) @(posedge clk); #1; 
 
         // $fclose(rtl_trace_file);
         // $finish;
