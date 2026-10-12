@@ -27,10 +27,10 @@ module riscv_soc_tb;
     logic [31:0] prev_pc, wb_pc_delayed;
     int repeat_count;
     logic [31:0] cycle_count;
-    localparam int HALT_THRESHOLD = 3;
+    localparam int HALT_THRESHOLD = 2;
     // change the values below per test
     localparam int unsigned EXPECTED_RESULT = 39600;  // matches telemetry[0]
-    localparam int telemetry_start = 32'h3f60; // 32'h4120 memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line // TODO change here accoring to telemetry line
+    localparam int telemetry_start = 32'h3f60; // 32'h4130  memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line // TODO change here accoring to telemetry line
 
     // // TRACE DUMPING TODO enable only for lockstep verification with Spike
     // integer rtl_trace_file;
@@ -68,7 +68,8 @@ module riscv_soc_tb;
                 prev_pc <= wb_pc_delayed;
             end
             
-            if (repeat_count > HALT_THRESHOLD) begin
+            // if (repeat_count > HALT_THRESHOLD) begin
+            if(dut.riscv_cpu_inst.wb_pc == 32'h2c) begin
                 // Compute the line + word-within-line for each address, matching
                 // the packing bin2hex.py used (word0 = lowest bits of the 128-bit line)
                 automatic int telemetry_results_memory_line = telemetry_start >> 4;
@@ -101,17 +102,17 @@ module riscv_soc_tb;
                 $display("IPC = %0.4f", real'(total_instructions) / real'(total_cycles));  // caution: see note below
                 ///////// End 1. //////////////////////////////////////
 
-                ///// 2. Measure and print total crc for validation from coremark - respective change at the core_main.c /////////////
+                // /// 2. Measure and print total crc for validation from coremark - respective change at the core_main.c /////////////
                 // automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
                 // automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
 
                 // $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
                 //         iterations, coremark_cycles, crc_final, total_errors);
-                ///////// End 2. //////////////////////////////////////
+                // /////// End 2. //////////////////////////////////////
 
 
                 // $fclose(rtl_trace_file);
-
+ 
                 $display("[%0t] Halt loop detected: PC stuck at %h", $time, wb_pc_delayed);                
                 $finish;
             end
@@ -123,7 +124,7 @@ module riscv_soc_tb;
         if (!rst && (cycle_count % 10_000_000 == 0)) begin
             automatic real ipc = real'(dut.riscv_cpu_inst.riscv_execute_inst.riscv_csr_inst.minstret) / real'(cycle_count);
             $display("[%0t] progress: %0d cycles, pc=%h, IPC=%0.4f",
-                    $time, cycle_count, dut.riscv_cpu_inst.pc,
+                    $time, cycle_count, dut.riscv_cpu_inst.if_pc,
                     ipc);
         end
     end
@@ -141,8 +142,8 @@ module riscv_soc_tb;
         repeat(2) @(posedge clk); #1;
         rst = 1'b0;
 
-        // // Wait enough cycles to debug the error
-        // repeat(10000) @(posedge clk); #1;
+        // Wait enough cycles to debug the error
+        // repeat(1000) @(posedge clk); #1; 
 
         // $fclose(rtl_trace_file);
         // $finish;

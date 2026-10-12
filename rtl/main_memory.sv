@@ -53,8 +53,8 @@
                 if (mem_req_write) begin
                     base = mem_addr; // Latch the data before asserting latency becuase after handshake data can be invalid
                     data_to_write = mem_wdata;
-                    write_latency = $urandom_range(5, 10);  // pick your min/max
-                    repeat(write_latency) @(posedge clk); #1;
+                    // write_latency = $urandom_range(0, 0);  // pick your min/max
+                    // repeat(write_latency) @(posedge clk); #1;
                     backing_mem[base[(MEM_DEPTH-1):4]] = data_to_write; 
                     mem_resp_valid = 1'b1;
                     do begin
@@ -64,8 +64,8 @@
                     mem_resp_valid = 1'b0;                        
                 end else begin
                     base = mem_addr; // Latch the data before asserting latency becuase after handshake data can be invalid
-                    read_latency = $urandom_range(5, 10);  // pick your min/max
-                    repeat(read_latency) @(posedge clk); #1;
+                    // read_latency = $urandom_range(0, 0);  // pick your min/max
+                    // repeat(read_latency) @(posedge clk); #1;
                     mem_resp_data = backing_mem[base[(MEM_DEPTH-1):4]];
                     mem_resp_valid = 1'b1;
                     do begin
