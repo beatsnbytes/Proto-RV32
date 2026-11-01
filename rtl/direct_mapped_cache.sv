@@ -1,7 +1,9 @@
 // Direct Mapped L1 Cache
 // 1KB, 16B per line
 
-module direct_mapped_cache (
+module direct_mapped_cache #(
+    localparam int ADDR_WIDTH = 32 
+)(
     input logic clk, 
     input logic rst,
     // CPU-side
@@ -27,7 +29,7 @@ module direct_mapped_cache (
     input logic [127 : 0] mem_resp_data
 );
 
-    localparam int ADDR_WIDTH = 32;
+    // localparam int ADDR_WIDTH = 32;
     localparam int CACHE_ENTRIES = 64;
     localparam int INDEX_WIDTH = $clog2(CACHE_ENTRIES);    
     localparam int DATA_LINE_WIDTH = 128;
@@ -57,6 +59,11 @@ module direct_mapped_cache (
     logic [DATA_LINE_WIDTH-1 : 0] data_mem [CACHE_ENTRIES - 1 : 0];
     logic [CACHE_ENTRIES - 1 : 0] valid_bit_mem;
     logic [CACHE_ENTRIES - 1 : 0] dirty_bit_mem; // Bit array showing the dirty lines
+
+    logic [ADDR_WIDTH-1 : 0] address_flush_counter;
+    logic [ADDR_WIDTH-1 : 0] address_flush_counter_shifted; // 1 extra bit so it can hold the value CACHE ENTRIES which signals we are off the cache size and the flush is done
+    logic flush_cache_done; 
+    logic [31:0] selected_cache_line_word, selected_cache_line_word_masked, masked_word_written; 
 
     typedef enum logic [3:0] {
         IDLE            = 4'b0000,
@@ -145,8 +152,7 @@ module direct_mapped_cache (
         endcase
     end
 
-    logic [ADDR_WIDTH-1 : 0] address_flush_counter, address_flush_counter_shifted; // 1 extra bit so it can hold the value CACHE ENTRIES which signals we are off the cache size and the flush is done
-    logic flush_cache_done;  
+
 
     assign flush_cache_done = (address_flush_counter == $bits(address_flush_counter)'(CACHE_ENTRIES));
 
@@ -293,7 +299,7 @@ module direct_mapped_cache (
         end
     end
 
-    logic [31:0] selected_cache_line_word, selected_cache_line_word_masked, masked_word_written;
+
     always_comb begin : write_masked_word
         selected_cache_line_word = data_mem[index_r][offset_r[3:2]*32 +: 32];
         selected_cache_line_word_masked = ~mask_extended_r & selected_cache_line_word;

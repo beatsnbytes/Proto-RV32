@@ -34,7 +34,8 @@
     `ifdef FORMAL
         // backing_mem left unconstrained for formal verification
     `else
-    initial $readmemh(DMEM_HEX_FILE, backing_mem);
+     initial $readmemh(DMEM_HEX_FILE, backing_mem);
+//    initial $readmemh("/home/vatistas/hdl_rampup/sv-learning/sw/bringup/build/coremark_lines.hex", backing_mem);
     `endif
     
     logic [31:0] mem_addr_offset, base_offset;

@@ -1,6 +1,12 @@
 # Verilator build output
 obj_dir/
 
+# Vivado artifacts
+vivado_*.backup.*
+vivado.log
+vivado.jou
+vivado_*.str
+
 # Auxiliary documents
 docs/*
 

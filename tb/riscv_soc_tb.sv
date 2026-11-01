@@ -8,6 +8,7 @@ module riscv_soc_tb;
     logic clk, rst;
     logic [31:0] pc, exec_result;
     logic zero;
+    logic [31:0] cpu_wb_pc;
 
     riscv_soc #(
 
@@ -17,7 +18,8 @@ module riscv_soc_tb;
         // .DMEM_HEX_FILE("../sw/bringup/build/custom_c_lines.hex")  // pass through to main_memory        
     )dut(
     .clk(clk),
-    .rst(rst)
+    .rst(rst),
+    .cpu_wb_pc(cpu_wb_pc)
     );
 
     initial clk = 1'b0;
@@ -30,23 +32,23 @@ module riscv_soc_tb;
     localparam int HALT_THRESHOLD = 2;
     // change the values below per test
     localparam int unsigned EXPECTED_RESULT = 39600;  // matches telemetry[0]
-    localparam int telemetry_start = 32'h3f60; // 32'h4130  memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line // TODO change here accoring to telemetry line
+    localparam int telemetry_start = 32'h4120; // 32'h4130  memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line // TODO change here accoring to telemetry line
 
-    // // TRACE DUMPING TODO enable only for lockstep verification with Spike
-    // integer rtl_trace_file;
-    // logic [31:0] wb_pc_delayed_trace;
+    // TRACE DUMPING TODO enable only for lockstep verification with Spike
+    integer rtl_trace_file;
+    logic [31:0] wb_pc_delayed_trace;
 
-    // initial begin
-    //     rtl_trace_file = $fopen("rtl_trace.log", "w");
-    // end
+    initial begin
+        rtl_trace_file = $fopen("rtl_trace.log", "w");
+    end
 
-    // always @(posedge clk) begin
-    //     wb_pc_delayed_trace <= dut.riscv_cpu_inst.wb_pc;
+    always @(posedge clk) begin
+        wb_pc_delayed_trace <= dut.riscv_cpu_inst.wb_pc;
 
-    //     if (dut.riscv_cpu_inst.is_retired_inst_valid) begin
-    //         $fwrite(rtl_trace_file, "%h\n", wb_pc_delayed_trace);
-    //     end
-    // end
+        if (dut.riscv_cpu_inst.is_retired_inst_valid) begin
+            $fwrite(rtl_trace_file, "%h\n", wb_pc_delayed_trace);
+        end
+    end
 
 
 
@@ -54,6 +56,7 @@ module riscv_soc_tb;
     always @(posedge clk) begin
 
         wb_pc_delayed <= dut.riscv_cpu_inst.wb_pc; // Delay the wb_pc to align with the valid retirement signal
+        // wb_pc_delayed <= cpu_wb_pc;
 
         if (rst) begin
             prev_pc      <= 32'hFFFF_FFFF;  // force mismatch right after reset
@@ -69,7 +72,7 @@ module riscv_soc_tb;
             end
             
             // if (repeat_count > HALT_THRESHOLD) begin
-            if(dut.riscv_cpu_inst.wb_pc == 32'h2c) begin
+            if(dut.riscv_cpu_inst.wb_pc == 32'h30) begin //TODO fix here. now explicitly looking for 2c or 30 make it general woth an exception
                 // Compute the line + word-within-line for each address, matching
                 // the packing bin2hex.py used (word0 = lowest bits of the 128-bit line)
                 automatic int telemetry_results_memory_line = telemetry_start >> 4;
@@ -93,25 +96,25 @@ module riscv_soc_tb;
                 automatic int unsigned iterations    = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][31:0];
                 automatic int unsigned coremark_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][63:32];
                 
-                ///// 1. Measure and print total IPC from coremark - respective change at the core_main.c /////////////
-                automatic int unsigned total_instructions     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
-                automatic int unsigned total_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];  
+                // ///// 1. Measure and print total IPC from coremark - respective change at the core_main.c /////////////
+                // automatic int unsigned total_instructions     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                // automatic int unsigned total_cycles  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];  
 
-                $display("iterations=%0d, total_cycles=%0d, instructions=%0d, cycles=%0d",                        
-                        iterations, coremark_cycles, total_instructions, total_cycles);
-                $display("IPC = %0.4f", real'(total_instructions) / real'(total_cycles));  // caution: see note below
+                // $display("iterations=%0d, total_cycles=%0d, instructions=%0d, cycles=%0d",                        
+                //         iterations, coremark_cycles, total_instructions, total_cycles);
+                // $display("IPC = %0.4f", real'(total_instructions) / real'(total_cycles));  // caution: see note below
                 ///////// End 1. //////////////////////////////////////
 
-                // /// 2. Measure and print total crc for validation from coremark - respective change at the core_main.c /////////////
-                // automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
-                // automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
+                /// 2. Measure and print total crc for validation from coremark - respective change at the core_main.c /////////////
+                automatic int unsigned crc_final     = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][95:64];
+                automatic int unsigned total_errors  = dut.main_memory_inst.backing_mem[telemetry_results_memory_line][127:96];                
 
-                // $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
-                //         iterations, coremark_cycles, crc_final, total_errors);
-                // /////// End 2. //////////////////////////////////////
+                $display("iterations=%0d, total_cycles=%0d, crc=0x%04h, total_errors=%0d",
+                        iterations, coremark_cycles, crc_final, total_errors);
+                /////// End 2. //////////////////////////////////////
 
 
-                // $fclose(rtl_trace_file);
+                $fclose(rtl_trace_file);
  
                 $display("[%0t] Halt loop detected: PC stuck at %h", $time, wb_pc_delayed);                
                 $finish;

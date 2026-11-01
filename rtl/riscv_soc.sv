@@ -4,31 +4,15 @@
 //TODO change the assertions module hierarchies
 
 module riscv_soc #(
-    parameter string IMEM_HEX_FILE = "UNSET.hex", // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error,
-    parameter string DMEM_HEX_FILE = "UNSET.hex"
+    parameter string IMEM_HEX_FILE = "custom_c_words.hex", // Deliberately unset so if the forwarding parameter chain is broken, it produces a loud failure instead of a silent error,
+    parameter string DMEM_HEX_FILE = "custom_c_lines.hex"
 )(
     input logic clk,
-    input logic rst
+    input logic rst,
+    // Output logic for FPGA pins //
+    output logic [31:0] cpu_wb_pc
     );
 
-    riscv_cpu #(
-        .IMEM_HEX_FILE(IMEM_HEX_FILE)
-    )riscv_cpu_inst(
-        .clk(clk),
-        .rst(rst),
-        //CPU-to-Cache interface
-        .cpu_req_write(cpu_req_write), // Read = 0, Write = 1
-        .cpu_req_flush(cpu_req_flush),
-        .flush_mode(flush_mode),
-        .cpu_req_valid(cpu_req_valid), 
-        .cpu_req_ready(cpu_req_ready),
-        .cpu_addr(cpu_addr),
-        .cpu_wdata(cpu_wdata),
-        .cpu_wmask(cpu_wmask),
-        .cpu_resp_data(cpu_resp_data),
-        .cpu_resp_valid(cpu_resp_valid),
-        .cpu_resp_ready(cpu_resp_ready)        
-    );
 
     // Cache-to-CPU connection
     logic cpu_req_write;
@@ -53,6 +37,25 @@ module riscv_soc #(
     logic mem_resp_valid;
     logic [127:0] mem_resp_data;
 
+    riscv_cpu #(
+        .IMEM_HEX_FILE(IMEM_HEX_FILE)
+    )riscv_cpu_inst(
+        .clk(clk),
+        .rst(rst),
+        //CPU-to-Cache interface
+        .cpu_req_write(cpu_req_write), // Read = 0, Write = 1
+        .cpu_req_flush(cpu_req_flush),
+        .flush_mode(flush_mode),
+        .cpu_req_valid(cpu_req_valid), 
+        .cpu_req_ready(cpu_req_ready),
+        .cpu_addr(cpu_addr),
+        .cpu_wdata(cpu_wdata),
+        .cpu_wmask(cpu_wmask),
+        .cpu_resp_data(cpu_resp_data),
+        .cpu_resp_valid(cpu_resp_valid),
+        .cpu_resp_ready(cpu_resp_ready),
+        .cpu_wb_pc(cpu_wb_pc)        
+    );
 
     direct_mapped_cache direct_mapped_cache_inst(  // 1KB = 64 entries -- 128 bits wide each -- 4 * 32bit words
         .clk(clk),
@@ -80,6 +83,7 @@ module riscv_soc #(
         .mem_resp_data(mem_resp_data)   //128 bits deep
     );
 
+`ifndef SYNTHESIS
     main_memory #(
         .DMEM_HEX_FILE(DMEM_HEX_FILE)
     )main_memory_inst( // 16KB main memory model -- 1024 entries --128 bits wide each -- 4 * 32bit words
@@ -94,7 +98,13 @@ module riscv_soc #(
         .mem_resp_ready(mem_resp_ready),
         .mem_resp_data(mem_resp_data)   //128 bits deep
     );
-
+`else
+    // 2. For Synthesis: Prevents Vivado from pruning your CPU!
+    // Vivado sees a dynamic input, keeping the CPU logic alive.
+    assign mem_req_ready = 1'b1;
+    assign mem_resp_valid = 1'b1;  
+    assign mem_resp_data = mem_addr[2] ? 32'hEA000000 : 32'h00000000; 
+`endif
 
 
 endmodule

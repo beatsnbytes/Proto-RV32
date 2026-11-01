@@ -109,7 +109,7 @@ elif [ "$1" == "rtl-trace" ]; then
 elif [ "$1" == "coremark-rtl" ]; then
     echo "=== Building CoreMark for RTL (ORIGIN=0x0, ITERATIONS=$COREMARK_ITERATIONS) ==="
     [ -n "$TDS_FLAG" ] && echo "    TOTAL_DATA_SIZE override: $COREMARK_TOTAL_DATA_SIZE"
-    riscv32-unknown-elf-gcc -march=rv32im_zicsr -mabi=ilp32 -nostdlib -nostartfiles \
+    riscv32-unknown-elf-gcc -march=rv32im_zicsr -mabi=ilp32 -nostdlib -nostartfiles -mno-relax \
         -DFLAGS_STR="\"-march=rv32im_zicsr -mabi=ilp32\"" \
         -DITERATIONS="$COREMARK_ITERATIONS" \
         $TDS_FLAG \

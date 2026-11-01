@@ -18,7 +18,9 @@ module riscv_cpu #(
      output logic [3:0] cpu_wmask,
      input logic [31 : 0] cpu_resp_data,
      input logic cpu_resp_valid,
-     output logic cpu_resp_ready
+     output logic cpu_resp_ready,
+     // FPGA Outputs tha leave SoC level //
+     output logic [31:0] cpu_wb_pc
 );
 
     logic [4:0] rs1_addr, rs2_addr, rd_addr;
@@ -35,7 +37,6 @@ module riscv_cpu #(
     logic [31:0] dmem [255:0]; // 1KB data memory
     logic [31:0] memory_load_data; // Data read from memory
     logic [31:0] wb_data; // writeback data - ALU or memory
-
     logic [31:0] memory_wr_data;
 
     // Signals for the EX pipeline register
@@ -56,7 +57,6 @@ module riscv_cpu #(
     logic zero;
     logic [31:0] exec_result;
     logic ex_is_jal, ex_is_jalr;
-
     logic fwd_mem_rs1, fwd_mem_rs2;
     logic [1:0] fwd_to_rs1, fwd_to_rs2;
 
@@ -184,8 +184,8 @@ module riscv_cpu #(
 
 
     riscv_branch_predictor #(
-        .BHT_SIZE(512), // Can be sized to desire
-        .BTB_SIZE(512) // BTB and BHT size can be different
+        .BHT_SIZE(64), // Can be sized to desire
+        .BTB_SIZE(64) // BTB and BHT size can be different
     ) riscv_branch_predictor_inst (
         .clk(clk),
         .rst(rst),
@@ -550,6 +550,8 @@ logic busy;
         end
     end
 
+    // Pass to the outer world via SoC ouput
+    assign cpu_wb_pc = wb_pc;
 
     always_ff @(posedge clk) begin : minstret_signal_generation
         if (rst) begin
