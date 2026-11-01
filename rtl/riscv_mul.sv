@@ -44,7 +44,7 @@ module riscv_mul(
     always_comb begin
         case(current_state)
             IDLE: next_state = is_mul_instr ? COMPUTE : IDLE;
-            COMPUTE: next_state = iters_done ? DONE : COMPUTE;
+            COMPUTE: next_state = (iters_done || early_finish) ? DONE : COMPUTE;
             DONE: next_state = IDLE; 
             default: next_state = IDLE;
         endcase
@@ -78,6 +78,12 @@ module riscv_mul(
             end
         end
     end
+
+    logic early_finish;
+    logic [31:0] op_b_right_shifted;
+
+    assign op_b_right_shifted = op_b_latched >> bit_idx;
+    assign early_finish = !(|op_b_right_shifted); // If the remainder of op_b are zero we can exit early
 
     assign busy = (current_state==IDLE && is_mul_instr) || (current_state==COMPUTE);
     assign iters_done = (bit_idx==5'd31);

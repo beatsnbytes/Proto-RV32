@@ -34,21 +34,21 @@ module riscv_soc_tb;
     localparam int unsigned EXPECTED_RESULT = 39600;  // matches telemetry[0]
     localparam int telemetry_start = 32'h4120; // 32'h4130  memory line where telemetry results start. Can fit up to 4 32b results. The rest spill to the next line // TODO change here accoring to telemetry line
 
-    // TRACE DUMPING TODO enable only for lockstep verification with Spike
-    integer rtl_trace_file;
-    logic [31:0] wb_pc_delayed_trace;
+    // // TRACE DUMPING TODO enable only for lockstep verification with Spike
+    // integer rtl_trace_file;
+    // logic [31:0] wb_pc_delayed_trace;
 
-    initial begin
-        rtl_trace_file = $fopen("rtl_trace.log", "w");
-    end
+    // initial begin
+    //     rtl_trace_file = $fopen("rtl_trace.log", "w");
+    // end
 
-    always @(posedge clk) begin
-        wb_pc_delayed_trace <= dut.riscv_cpu_inst.wb_pc;
+    // always @(posedge clk) begin
+    //     wb_pc_delayed_trace <= dut.riscv_cpu_inst.wb_pc;
 
-        if (dut.riscv_cpu_inst.is_retired_inst_valid) begin
-            $fwrite(rtl_trace_file, "%h\n", wb_pc_delayed_trace);
-        end
-    end
+    //     if (dut.riscv_cpu_inst.is_retired_inst_valid) begin
+    //         $fwrite(rtl_trace_file, "%h\n", wb_pc_delayed_trace);
+    //     end
+    // end
 
 
 
@@ -114,7 +114,7 @@ module riscv_soc_tb;
                 /////// End 2. //////////////////////////////////////
 
 
-                $fclose(rtl_trace_file);
+                // $fclose(rtl_trace_file);
  
                 $display("[%0t] Halt loop detected: PC stuck at %h", $time, wb_pc_delayed);                
                 $finish;
@@ -146,7 +146,7 @@ module riscv_soc_tb;
         rst = 1'b0;
 
         // Wait enough cycles to debug the error
-        // repeat(1000) @(posedge clk); #1; 
+        // repeat(100000000) @(posedge clk); #1; 
 
         // $fclose(rtl_trace_file);
         // $finish;
